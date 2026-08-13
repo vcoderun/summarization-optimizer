@@ -1,0 +1,25 @@
+{
+  "campaign_id": "summarizer-smoke",
+  "seed_instructions": "Write a brief summary.",
+  "dataset_path": "smoke_dataset.json",
+  "output_dir": "../runs/smoke",
+  "invoker_target": "kedi_summarization_optimizer.testing:deterministic_invoker",
+  "evaluator_target": "kedi_summarization_optimizer.testing:exact_evaluator",
+  "gepa": {
+    "max_metric_calls": 6,
+    "max_concurrency": 1,
+    "proposer_target": "kedi_summarization_optimizer.testing:deterministic_proposer",
+    "reflection_minibatch_size": 1,
+    "cache_evaluations": false
+  },
+  "instrumentation": {
+    "detail": "full",
+    "include_pydantic_ai": true,
+    "include_httpx": false
+  },
+  "certification": {
+    "minimum_mean_score": 1.0,
+    "minimum_case_score": 1.0,
+    "require_all_hard_pass": true
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "version": "smoke-v1",
+  "train": [
+    {
+      "id": "train-approval",
+      "input": {
+        "example_id": "train-approval",
+        "messages": [
+          {"role": "user", "content": "Continue the deployment after approval."}
+        ],
+        "anchors": [
+          {"kind": "constraint", "id": "constraint-1", "payload": {"text": "Never expose credentials."}},
+          {"kind": "pending_action", "id": "pending-1", "payload": {"text": "Wait for deployment approval."}}
+        ]
+      },
+      "expected": {
+        "current_objective": "Continue the deployment after approval.",
+        "constraints": ["Never expose credentials."],
+        "pending_actions": ["Wait for deployment approval."],
+        "anchors": [
+          {"kind": "constraint", "id": "constraint-1", "payload": {"text": "Never expose credentials."}},
+          {"kind": "pending_action", "id": "pending-1", "payload": {"text": "Wait for deployment approval."}}
+        ]
+      },
+      "metadata": {"scenario_family": "approval", "generator_version": "manual-v1"}
+    }
+  ],
+  "validation": [
+    {
+      "id": "validation-resource",
+      "input": {
+        "example_id": "validation-resource",
+        "messages": [
+          {"role": "user", "content": "Finish the parser regression fix."}
+        ],
+        "anchors": [
+          {"kind": "decision", "id": "decision-1", "payload": {"text": "Keep parsing deterministic."}},
+          {"kind": "resource", "id": "resource-1", "payload": {"text": "src/kedi/parser.py"}}
+        ]
+      },
+      "expected": {
+        "current_objective": "Finish the parser regression fix.",
+        "decisions": ["Keep parsing deterministic."],
+        "resources": ["src/kedi/parser.py"],
+        "anchors": [
+          {"kind": "decision", "id": "decision-1", "payload": {"text": "Keep parsing deterministic."}},
+          {"kind": "resource", "id": "resource-1", "payload": {"text": "src/kedi/parser.py"}}
+        ]
+      },
+      "metadata": {"scenario_family": "resource", "generator_version": "manual-v1"}
+    }
+  ],
+  "heldout": [
+    {
+      "id": "heldout-pending",
+      "input": {
+        "example_id": "heldout-pending",
+        "messages": [
+          {"role": "user", "content": "Resume the interrupted benchmark."}
+        ],
+        "anchors": [
+          {"kind": "constraint", "id": "constraint-2", "payload": {"text": "Reuse the existing checkpoint."}},
+          {"kind": "pending_action", "id": "pending-2", "payload": {"text": "Inspect the partial record before resuming."}}
+        ]
+      },
+      "expected": {
+        "current_objective": "Resume the interrupted benchmark.",
+        "constraints": ["Reuse the existing checkpoint."],
+        "pending_actions": ["Inspect the partial record before resuming."],
+        "anchors": [
+          {"kind": "constraint", "id": "constraint-2", "payload": {"text": "Reuse the existing checkpoint."}},
+          {"kind": "pending_action", "id": "pending-2", "payload": {"text": "Inspect the partial record before resuming."}}
+        ]
+      },
+      "metadata": {"scenario_family": "resume", "generator_version": "manual-v1"}
+    }
+  ]
+}

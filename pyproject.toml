@@ -1,0 +1,40 @@
+[project]
+name = "kedi-summarization-optimizer"
+version = "0.1.0"
+description = "Offline optimization and certification pipeline for Kedi history summarization."
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "autobench[pydantic-ai,pydantic-gepa]",
+    "pydantic>=2.12,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=6",
+    "ruff>=0.12",
+]
+
+[project.scripts]
+kedi-summarization-optimize = "kedi_summarization_optimizer.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kedi_summarization_optimizer"]
+
+[tool.uv.sources]
+autobench = { path = "../../../autobench/workspace/autobench", editable = true }
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]
