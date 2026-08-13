@@ -11,6 +11,7 @@ from kedi_summarization_optimizer import (
     SummarizationOptimizationPipeline,
     load_campaign_config,
 )
+from kedi_summarization_optimizer.benchmarks import optimization_benchmark
 from kedi_summarization_optimizer.dataset import to_gepa_split
 from kedi_summarization_optimizer.pipeline import PipelineError
 
@@ -52,6 +53,14 @@ def test_config_and_dataset_are_valid_without_running_models() -> None:
     assert config.gepa.proposer_target is not None
     assert len(dataset.fingerprints()["heldout"]) == 64
     assert to_gepa_split(dataset, seed=0).test == ()
+
+
+def test_optimization_enables_gepa_and_pydantic_ai_instrumentation() -> None:
+    config = load_campaign_config(EXAMPLES / "smoke_campaign.json")
+
+    instrumentation = optimization_benchmark(config).to_spec().instrumentation
+
+    assert [item.kind for item in instrumentation] == ["pydantic_gepa", "pydantic_ai"]
 
 
 def test_pipeline_refuses_to_overwrite_evidence(tmp_path: Path) -> None:

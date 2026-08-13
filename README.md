@@ -45,6 +45,11 @@ The smoke adapter performs no network or model I/O. It exercises actual
 pydantic-gepa optimization, native Autobench instrumentation, immutable records,
 replay, held-out certification, and guarded prompt publication.
 
+Both Pydantic-GEPA and Pydantic AI instrumentation are enabled by default. The
+deterministic smoke invoker does not call Pydantic AI, so its record contains
+GEPA evidence but no Pydantic AI spans. A future Pydantic AI-backed invoker will
+emit model and tool activity into the same Autobench run automatically.
+
 ## Output boundary
 
 Each campaign writes:
