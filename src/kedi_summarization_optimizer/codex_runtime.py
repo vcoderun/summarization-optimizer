@@ -102,8 +102,14 @@ _FORBIDDEN_PROPOSAL_FRAGMENTS = (
     "> import:",
     "aggregate evidence",
     "aggregate failure",
+    "all project-specific claims",
     "are available in",
+    "are present in",
     "are retained in this",
+    "available material",
+    "available record",
+    "cannot be verified",
+    "can be established",
     "current active work",
     "current candidate",
     "current canonical anchors",
@@ -128,10 +134,13 @@ _FORBIDDEN_PROPOSAL_FRAGMENTS = (
     "luna high",
     "mean score",
     "metric name",
+    "missing ordered history",
     "next state update",
     "no project-specific",
     "no sensitive values",
     "observed failure",
+    "only actionable next step",
+    "project-specific state",
     "recorded failure",
     "run_main",
     "skill-creator",
@@ -140,52 +149,14 @@ _FORBIDDEN_PROPOSAL_FRAGMENTS = (
     "terra high",
     "there are no",
     "this exact schema",
+    "underlying project",
     "until then",
     "validation set",
     "virtual python",
+    "when source history is supplied",
 )
 _OBSERVATIONAL_ABSENCE = re.compile(r"\b(?:no|none)\b", re.IGNORECASE)
 _MULTIPLE_SENTENCES = re.compile(r"[.!?]\s+\S")
-_IMPERATIVE_RULE_PREFIXES = (
-    "apply ",
-    "avoid ",
-    "carry ",
-    "classify ",
-    "compress ",
-    "derive ",
-    "distinguish ",
-    "do ",
-    "ensure ",
-    "exclude ",
-    "forward ",
-    "if ",
-    "include ",
-    "keep ",
-    "limit ",
-    "maintain ",
-    "mark ",
-    "never ",
-    "omit ",
-    "prefer ",
-    "preserve ",
-    "prioritize ",
-    "reconstruct ",
-    "record ",
-    "reject ",
-    "remove ",
-    "resolve ",
-    "retain ",
-    "select ",
-    "separate ",
-    "state ",
-    "summarize ",
-    "treat ",
-    "use ",
-    "update ",
-    "verify ",
-    "when ",
-)
-_IMPERATIVE_RULE_MODIFIERS = ("always ", "carefully ", "consistently ", "explicitly ", "only ")
 
 
 class PromptProposal(FrozenModel):
@@ -214,13 +185,6 @@ class PromptProposal(FrozenModel):
                 )
             if "\n" in normalized or _MULTIPLE_SENTENCES.search(normalized):
                 raise ValueError("Each proposal rule must be one sentence.")
-            command = folded
-            for modifier in _IMPERATIVE_RULE_MODIFIERS:
-                if command.startswith(modifier):
-                    command = command.removeprefix(modifier)
-                    break
-            if not command.startswith(_IMPERATIVE_RULE_PREFIXES):
-                raise ValueError("Each proposal rule must be imperative or conditional.")
 
         if not 300 <= len(self.instructions) <= MAX_PROPOSAL_CHARS:
             raise ValueError(

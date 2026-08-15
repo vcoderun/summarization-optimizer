@@ -89,10 +89,11 @@ def test_prompt_proposal_rejects_optimizer_only_and_oversized_text() -> None:
         codex_runtime.PromptProposal(
             rules=(*valid[:-1], "Preserve active work. Remove stale work.")
         )
-    with pytest.raises(ValidationError, match="imperative"):
-        codex_runtime.PromptProposal(rules=(*valid[:-1], "Active work should remain available."))
-    with pytest.raises(ValidationError, match="imperative"):
-        codex_runtime.PromptProposal(rules=(*valid[:-1], "Always active work remains available."))
+    assert codex_runtime.PromptProposal(
+        rules=(*valid[:-1], "Later applicable instructions replace earlier conflicting ones.")
+    )
+    with pytest.raises(ValidationError, match="optimizer-only"):
+        codex_runtime.PromptProposal(rules=(*valid[:-1], "Project-specific state is unknown."))
     with pytest.raises(ValidationError, match="between 300"):
         codex_runtime.PromptProposal(rules=tuple("Preserve " + "x" * 900 for _ in range(5)))
 
