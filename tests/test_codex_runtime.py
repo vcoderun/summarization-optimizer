@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from kedi_summarization_optimizer import (
     CodexModelsSettings,
@@ -59,6 +59,124 @@ def test_redaction_removes_every_evaluator_canary() -> None:
     assert redacted == (
         "<SENSITIVE_VALUE> appears before <SENSITIVE_VALUE> and <SENSITIVE_VALUE> appears twice"
     )
+
+
+def test_prompt_proposal_rejects_optimizer_only_and_oversized_text() -> None:
+    valid = (
+        "Reconstruct current state from ordered history. Prefer explicit evidence and later "
+        "applicable instructions. Preserve durable rules, active work, verified lifecycle "
+        "outcomes, useful resources, and live references. Remove stale, resolved, unrelated, "
+        "or sensitive content. Keep the checkpoint compact enough for a fresh agent to continue."
+    )
+
+    assert codex_runtime.PromptProposal(instructions=valid).instructions == valid
+    with pytest.raises(ValidationError, match="optimizer-only"):
+        codex_runtime.PromptProposal(instructions=valid + " Read evaluation constraints.")
+    with pytest.raises(ValidationError, match="optimizer-only"):
+        codex_runtime.PromptProposal(instructions=valid + " The mean score is low.")
+    with pytest.raises(ValidationError, match="at most"):
+        codex_runtime.PromptProposal(instructions="x" * 4_501)
+
+
+def test_reflection_evidence_excludes_raw_benchmark_material() -> None:
+    sanitized = codex_runtime._sanitize_reflection_evidence(
+        (
+            {
+                "case_name": "approval-lifecycle",
+                "inputs": {"messages": ["PRIVATE_HISTORY"]},
+                "expected_output": {"current_objective": "PRIVATE_EXPECTED"},
+                "metadata": {"scenario_family": "PRIVATE_FAMILY"},
+                "actual_output": {"current_objective": "PRIVATE_ACTUAL"},
+                "traces": ["PRIVATE_TRACE"],
+                "score": 0.25,
+                "success": False,
+                "failure_category": "quality",
+                "metric_feedback": {"checkpoint_quality": "Missing canonical anchors."},
+                "metric_side_info": {
+                    "checkpoint_quality": {
+                        "missing_anchors": 2,
+                        "example_id": "PRIVATE_ID",
+                    }
+                },
+            },
+        )
+    )
+    rendered = str(sanitized)
+
+    assert sanitized["evaluated_cases"] == 1
+    assert sanitized["mean_score"] == 0.25
+    assert sanitized["successful_cases"] == 0
+    assert sanitized["feedback_categories"] == {"canonical_anchor_fidelity": 1}
+    assert sanitized["mean_diagnostics"] == {"missing_anchors": 2.0}
+    for private in (
+        "PRIVATE_HISTORY",
+        "PRIVATE_EXPECTED",
+        "PRIVATE_FAMILY",
+        "PRIVATE_ACTUAL",
+        "PRIVATE_TRACE",
+        "PRIVATE_ID",
+        "case_name",
+        "inputs",
+        "expected_output",
+    ):
+        assert private not in rendered
+
+
+def test_terra_proposer_sends_only_sanitized_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    instructions = (
+        "Reconstruct current project state using explicit evidence. Apply later instructions by "
+        "subject, retain durable rules and unresolved work, and preserve verified lifecycle "
+        "outcomes. Exclude stale, unrelated, invalidated, or sensitive material. Keep the result "
+        "compact and useful to a fresh agent. Resolve conflicting statements only within their "
+        "shared subject and scope, retain uncertainty where evidence is incomplete, and "
+        "distinguish successful completion from failed, cancelled, or merely attempted work. "
+        "Preserve only references that remain necessary for continuation."
+    )
+
+    class _ProposalResult(BaseModel):
+        output: codex_runtime.PromptProposal
+
+    class _Proposer:
+        prompt: str | None = None
+
+        def run_sync(self, prompt: str) -> _ProposalResult:
+            self.prompt = prompt
+            return _ProposalResult(output=codex_runtime.PromptProposal(instructions=instructions))
+
+    proposer = _Proposer()
+
+    class _Runtime:
+        def __init__(self, runtime_proposer: _Proposer) -> None:
+            self.proposer = runtime_proposer
+
+    runtime = _Runtime(proposer)
+    monkeypatch.setattr(codex_runtime, "_get_runtime", lambda: runtime)
+
+    result = codex_runtime.terra_propose(
+        {"summarizer_instructions": "seed"},
+        {
+            "summarizer_instructions": [
+                {
+                    "inputs": {"messages": ["PRIVATE_HISTORY"]},
+                    "expected_output": "PRIVATE_EXPECTED",
+                    "score": 0.4,
+                    "success": False,
+                    "failure_category": "quality",
+                    "metric_feedback": {"quality": "Missing active state."},
+                }
+            ]
+        },
+        ["summarizer_instructions"],
+    )
+
+    assert result == {"summarizer_instructions": instructions}
+    assert proposer.prompt is not None
+    assert "PRIVATE_HISTORY" not in proposer.prompt
+    assert "PRIVATE_EXPECTED" not in proposer.prompt
+    assert "active_state" in proposer.prompt
+    assert "Missing active state." not in proposer.prompt
 
 
 @pytest.mark.asyncio

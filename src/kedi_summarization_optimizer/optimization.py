@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import cast
 
@@ -155,6 +156,16 @@ def _gepa_config(config: CampaignConfig, dataset: DatasetBundle) -> GEPAConfig:
                 "invoker_target": config.invoker_target,
                 "evaluator_target": config.evaluator_target,
                 "models": config.models.model_dump_json(),
+                "reflection_strategy": json.dumps(
+                    {
+                        "model": config.gepa.reflection_model,
+                        "reflection_target": config.gepa.reflection_target,
+                        "proposer_target": config.gepa.proposer_target,
+                        "minibatch_size": config.gepa.reflection_minibatch_size,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
             },
             seed=config.gepa.seed,
             cache_evaluations=config.gepa.cache_evaluations,

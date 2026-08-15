@@ -100,6 +100,23 @@ def test_real_pilot_reflection_config_is_checkpoint_fingerprint_safe() -> None:
     assert len(fingerprint) == 64
 
 
+def test_synthetic_proposer_strategy_is_checkpoint_compatibility_data() -> None:
+    config = load_campaign_config(EXAMPLES / "synthetic_campaign.json")
+    dataset = DatasetBundle.model_validate_json(
+        (ROOT / "datasets" / "synthetic_v2.json").read_text(encoding="utf-8")
+    )
+
+    compatibility = _gepa_config(config, dataset).run.compatibility
+    strategy = json.loads(compatibility["reflection_strategy"])
+
+    assert strategy["model"] is None
+    assert strategy["reflection_target"] is None
+    assert strategy["proposer_target"] == (
+        "kedi_summarization_optimizer.codex_runtime:terra_propose"
+    )
+    assert strategy["minibatch_size"] == 4
+
+
 def test_optimization_enables_gepa_and_pydantic_ai_instrumentation() -> None:
     config = load_campaign_config(EXAMPLES / "smoke_campaign.json")
 

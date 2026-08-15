@@ -22,7 +22,7 @@
   "gepa": {
     "max_metric_calls": 96,
     "max_concurrency": 4,
-    "reflection_target": "kedi_summarization_optimizer.codex_runtime:terra_reflect",
+    "proposer_target": "kedi_summarization_optimizer.codex_runtime:terra_propose",
     "reflection_minibatch_size": 4,
     "seed": 20260815,
     "resume": "if_exists",
