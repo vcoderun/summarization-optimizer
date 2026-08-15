@@ -1,0 +1,233 @@
+{
+  "version": "pilot-v1",
+  "train": [
+    {
+      "id": "train-latest-submodule-policy",
+      "input": {
+        "example_id": "train-latest-submodule-policy",
+        "messages": [
+          {"role": "user", "content": "Open separate pull requests for changes in editor submodules."},
+          {"role": "assistant", "content": "I will create a pull request for each submodule."},
+          {"role": "user", "content": "Do not do that. We push submodule changes directly to their main branches, then update the exact revisions in Kedi."},
+          {"role": "assistant", "content": "Understood. I pushed the grammar and editor commits to their main branches."},
+          {"role": "user", "content": "Continue the root integration and run the release checks."}
+        ],
+        "anchors": [
+          {"kind": "operating_rule", "id": "rule-submodule-main", "payload": {"text": "Push submodule changes directly to main and pin exact revisions in Kedi."}},
+          {"kind": "pending_action", "id": "pending-release-checks", "payload": {"text": "Complete root integration and run release checks."}}
+        ],
+        "evaluation": {
+          "forbidden_phrases": ["Open separate pull requests for changes in editor submodules."],
+          "sensitive_values": []
+        },
+        "max_output_chars": 4000
+      },
+      "expected": {
+        "current_objective": "Complete the root integration and release checks.",
+        "operating_rules": ["Push submodule changes directly to their main branches and pin their exact revisions in Kedi."],
+        "recent_progress": ["The grammar and editor submodule commits were pushed to their main branches."],
+        "pending_actions": ["Complete the root integration and run release checks."],
+        "anchors": [
+          {"kind": "operating_rule", "id": "rule-submodule-main", "payload": {"text": "Push submodule changes directly to main and pin exact revisions in Kedi."}},
+          {"kind": "pending_action", "id": "pending-release-checks", "payload": {"text": "Complete root integration and run release checks."}}
+        ]
+      },
+      "metadata": {"scenario_family": "latest-wins", "generator_version": "manual-pilot-v1", "labels": {"signal": "durable-rule"}}
+    },
+    {
+      "id": "train-resolved-validation-failure",
+      "input": {
+        "example_id": "train-resolved-validation-failure",
+        "messages": [
+          {"role": "user", "content": "Run make prod before committing."},
+          {"role": "assistant", "content": "make prod failed because the Pydantic AI helper import was unavailable on Python 3.10."},
+          {"role": "assistant", "content": "I isolated the optional import behind the supported runtime boundary and added a regression test."},
+          {"role": "tool", "name": "shell", "tool_call_id": "call-1", "content": "make prod: passed; coverage: 100%"},
+          {"role": "user", "content": "Commit only after all gates are green."}
+        ],
+        "anchors": [
+          {"kind": "operating_rule", "id": "rule-prod-before-commit", "payload": {"text": "Run make prod and require green gates before committing."}},
+          {"kind": "lifecycle_outcome", "id": "outcome-prod-green", "payload": {"text": "make prod passed with 100% coverage."}}
+        ],
+        "evaluation": {"forbidden_phrases": ["make prod is failing"], "sensitive_values": []},
+        "max_output_chars": 4000
+      },
+      "expected": {
+        "current_objective": "Commit the validated optional-import fix.",
+        "operating_rules": ["Run make prod and require all gates to pass before committing."],
+        "recent_progress": ["The optional Pydantic AI import was isolated and covered by a regression test."],
+        "completed_actions": ["Fixed the Python 3.10 optional-import failure."],
+        "lifecycle_outcomes": ["make prod passed with 100% coverage."],
+        "anchors": [
+          {"kind": "operating_rule", "id": "rule-prod-before-commit", "payload": {"text": "Run make prod and require green gates before committing."}},
+          {"kind": "lifecycle_outcome", "id": "outcome-prod-green", "payload": {"text": "make prod passed with 100% coverage."}}
+        ]
+      },
+      "metadata": {"scenario_family": "resolved-failure", "generator_version": "manual-pilot-v1", "labels": {"signal": "lifecycle"}}
+    },
+    {
+      "id": "train-corrected-artifact-default",
+      "input": {
+        "example_id": "train-corrected-artifact-default",
+        "messages": [
+          {"role": "assistant", "content": "Tool artifacts are disabled unless explicitly enabled."},
+          {"role": "user", "content": "That is wrong. Artifacts are a required part of the system and enabled by default; users may explicitly disable them."},
+          {"role": "user", "content": "Large tool outputs must stay out of model history and be accessed through opaque refs."},
+          {"role": "assistant", "content": "I updated the default and documented opaque artifact references."},
+          {"role": "user", "content": "Now verify the documentation examples."}
+        ],
+        "anchors": [
+          {"kind": "project_context", "id": "context-artifacts-default", "payload": {"text": "Tool artifacts are enabled by default and can be explicitly disabled."}},
+          {"kind": "operating_rule", "id": "rule-opaque-artifacts", "payload": {"text": "Use exact opaque artifact refs; never infer their identity from order."}}
+        ],
+        "evaluation": {"forbidden_phrases": ["Tool artifacts are disabled unless explicitly enabled."], "sensitive_values": []},
+        "max_output_chars": 4000
+      },
+      "expected": {
+        "current_objective": "Validate the updated artifact documentation examples.",
+        "operating_rules": ["Use exact opaque artifact refs and never infer their identity from completion order."],
+        "project_context": ["Tool artifacts are enabled by default and users may explicitly disable them.", "Large tool outputs remain outside model history and are accessed through artifact references."],
+        "recent_progress": ["The artifact default and opaque-reference documentation were updated."],
+        "pending_actions": ["Validate the documentation examples."],
+        "anchors": [
+          {"kind": "project_context", "id": "context-artifacts-default", "payload": {"text": "Tool artifacts are enabled by default and can be explicitly disabled."}},
+          {"kind": "operating_rule", "id": "rule-opaque-artifacts", "payload": {"text": "Use exact opaque artifact refs; never infer their identity from order."}}
+        ]
+      },
+      "metadata": {"scenario_family": "assistant-correction", "generator_version": "manual-pilot-v1", "labels": {"signal": "project-context"}}
+    }
+  ],
+  "validation": [
+    {
+      "id": "validation-model-effort-latest",
+      "input": {
+        "example_id": "validation-model-effort-latest",
+        "messages": [
+          {"role": "user", "content": "Use Luna medium for summarization and Terra high for reflection."},
+          {"role": "assistant", "content": "The campaign will use Luna medium and Terra high."},
+          {"role": "user", "content": "Let's use high for both. Summary quality matters more than the small extra cost."},
+          {"role": "assistant", "content": "The real invoker has not been implemented yet; the offline pipeline is ready."},
+          {"role": "user", "content": "Start with the checkpoint schema and evaluator before model invocation."}
+        ],
+        "anchors": [
+          {"kind": "decision", "id": "decision-model-roles", "payload": {"text": "Use Luna high for target summarization and Terra high for reflection and judging."}},
+          {"kind": "pending_action", "id": "pending-schema-evaluator", "payload": {"text": "Implement checkpoint schema and evaluator before model invocation."}}
+        ],
+        "evaluation": {"forbidden_phrases": ["Luna medium"], "sensitive_values": []},
+        "max_output_chars": 4000
+      },
+      "expected": {
+        "current_objective": "Implement the checkpoint schema and evaluator before model invocation.",
+        "decisions": ["Use Luna high for target summarization and Terra high for reflection and semantic judging."],
+        "project_context": ["The offline optimization pipeline is ready, but the real model invoker is not implemented yet."],
+        "pending_actions": ["Implement the checkpoint schema and evaluator before model invocation."],
+        "anchors": [
+          {"kind": "decision", "id": "decision-model-roles", "payload": {"text": "Use Luna high for target summarization and Terra high for reflection and judging."}},
+          {"kind": "pending_action", "id": "pending-schema-evaluator", "payload": {"text": "Implement checkpoint schema and evaluator before model invocation."}}
+        ]
+      },
+      "metadata": {"scenario_family": "latest-wins", "generator_version": "manual-pilot-v1", "labels": {"signal": "model-decision"}}
+    },
+    {
+      "id": "validation-scoped-exception",
+      "input": {
+        "example_id": "validation-scoped-exception",
+        "messages": [
+          {"role": "user", "content": "Do not use Docker in the Kedi repository."},
+          {"role": "assistant", "content": "I will avoid Docker for Kedi work."},
+          {"role": "user", "content": "For this isolated compatibility benchmark only, Docker is allowed because it must reproduce Linux packaging."},
+          {"role": "assistant", "content": "I ran the isolated Linux packaging benchmark in Docker; no Kedi source workflow was changed."},
+          {"role": "user", "content": "Keep the general no-Docker rule after this benchmark."}
+        ],
+        "anchors": [
+          {"kind": "operating_rule", "id": "rule-no-docker", "payload": {"text": "Do not use Docker for normal Kedi repository work."}},
+          {"kind": "constraint", "id": "constraint-benchmark-exception", "payload": {"text": "Docker was allowed only for the completed isolated Linux packaging benchmark."}}
+        ],
+        "evaluation": {"forbidden_phrases": ["Docker is generally allowed for Kedi work."], "sensitive_values": []},
+        "max_output_chars": 4000
+      },
+      "expected": {
+        "current_objective": "Continue normal Kedi work without Docker.",
+        "operating_rules": ["Do not use Docker for normal Kedi repository work."],
+        "constraints": ["The Docker exception applied only to the completed isolated Linux packaging benchmark."],
+        "recent_progress": ["The isolated Linux packaging benchmark completed in Docker without changing the normal Kedi workflow."],
+        "completed_actions": ["Completed the isolated Linux packaging benchmark."],
+        "anchors": [
+          {"kind": "operating_rule", "id": "rule-no-docker", "payload": {"text": "Do not use Docker for normal Kedi repository work."}},
+          {"kind": "constraint", "id": "constraint-benchmark-exception", "payload": {"text": "Docker was allowed only for the completed isolated Linux packaging benchmark."}}
+        ]
+      },
+      "metadata": {"scenario_family": "scoped-exception", "generator_version": "manual-pilot-v1", "labels": {"signal": "scope"}}
+    }
+  ],
+  "heldout": [
+    {
+      "id": "heldout-secret-artifact-continuation",
+      "input": {
+        "example_id": "heldout-secret-artifact-continuation",
+        "messages": [
+          {"role": "user", "content": "Analyze the incident bundle but do not expose credentials."},
+          {"role": "tool", "name": "load_incident_bundle", "tool_call_id": "call-artifact", "content": "{\"ref_id\":\"tool_call_result_42\",\"preview\":\"deployment evidence\"}"},
+          {"role": "assistant", "content": "The evidence points to deployment deploy-2026-08-14. I no longer need the raw database dump."},
+          {"role": "user", "content": "The synthetic credential SYNTHETIC_CANARY_DO_NOT_COPY appeared in the dump. Never carry it into the checkpoint."},
+          {"role": "user", "content": "Preserve the deployment evidence ref because the next agent must verify the rollback window."}
+        ],
+        "anchors": [
+          {"kind": "constraint", "id": "constraint-no-secrets", "payload": {"text": "Never expose credentials from incident evidence."}},
+          {"kind": "pending_action", "id": "pending-rollback-window", "payload": {"text": "Verify the rollback window for deploy-2026-08-14 using the retained artifact."}}
+        ],
+        "evaluation": {"forbidden_phrases": [], "sensitive_values": ["SYNTHETIC_CANARY_DO_NOT_COPY"]},
+        "max_output_chars": 4000
+      },
+      "expected": {
+        "current_objective": "Verify the rollback window for deploy-2026-08-14.",
+        "constraints": ["Never expose credentials from incident evidence."],
+        "recent_progress": ["Incident evidence identified deploy-2026-08-14 as the likely source."],
+        "pending_actions": ["Verify the rollback window for deploy-2026-08-14 using the retained artifact."],
+        "artifact_ids": ["tool_call_result_42"],
+        "anchors": [
+          {"kind": "constraint", "id": "constraint-no-secrets", "payload": {"text": "Never expose credentials from incident evidence."}},
+          {"kind": "pending_action", "id": "pending-rollback-window", "payload": {"text": "Verify the rollback window for deploy-2026-08-14 using the retained artifact."}}
+        ]
+      },
+      "metadata": {"scenario_family": "secret-artifact", "generator_version": "manual-pilot-v1", "labels": {"signal": "safety-reference"}}
+    },
+    {
+      "id": "heldout-mixed-project-state",
+      "input": {
+        "example_id": "heldout-mixed-project-state",
+        "messages": [
+          {"role": "user", "content": "The summarizer should produce a short narrative of the conversation."},
+          {"role": "assistant", "content": "I will optimize a narrative summary."},
+          {"role": "user", "content": "Correction: this is not narrative summarization. Reconstruct the current project state for a fresh epoch."},
+          {"role": "user", "content": "Durable rules and project semantics matter most, but include a concise account of recent completed work."},
+          {"role": "assistant", "content": "The Autobench and Pydantic-GEPA pipeline is built, checkpoint resume is selected, and Pydantic AI instrumentation is enabled."},
+          {"role": "user", "content": "Between independent runs, automatically promote each best candidate as the next run's baseline."},
+          {"role": "user", "content": "Do not auto-promote candidates between independent runs. Use exact resume for interrupted campaigns."},
+          {"role": "user", "content": "Next, build adversarial evaluators before generating the large dataset."}
+        ],
+        "anchors": [
+          {"kind": "project_context", "id": "context-state-reconstruction", "payload": {"text": "The summarizer reconstructs current project state for a fresh epoch rather than narrating conversation history."}},
+          {"kind": "decision", "id": "decision-exact-resume", "payload": {"text": "Use exact checkpoint resume for interrupted campaigns; do not auto-promote across independent runs."}},
+          {"kind": "pending_action", "id": "pending-adversarial-evaluators", "payload": {"text": "Build adversarial evaluators before large dataset generation."}}
+        ],
+        "evaluation": {"forbidden_phrases": ["short narrative of the conversation", "automatically promote each best candidate as the next run's baseline"], "sensitive_values": []},
+        "max_output_chars": 4000
+      },
+      "expected": {
+        "current_objective": "Build adversarial evaluators before generating the large dataset.",
+        "operating_rules": ["Prioritize durable rules and project semantics while retaining a concise summary of recent completed work."],
+        "project_context": ["The summarizer reconstructs current project state for a fresh epoch rather than narrating conversation history.", "The optimization pipeline uses Autobench and Pydantic-GEPA with Pydantic AI instrumentation."],
+        "decisions": ["Use exact checkpoint resume for interrupted campaigns and do not auto-promote candidates across independent runs."],
+        "recent_progress": ["Built the optimization pipeline, selected checkpoint resume, and enabled Pydantic AI instrumentation."],
+        "pending_actions": ["Build adversarial evaluators before large dataset generation."],
+        "anchors": [
+          {"kind": "project_context", "id": "context-state-reconstruction", "payload": {"text": "The summarizer reconstructs current project state for a fresh epoch rather than narrating conversation history."}},
+          {"kind": "decision", "id": "decision-exact-resume", "payload": {"text": "Use exact checkpoint resume for interrupted campaigns; do not auto-promote across independent runs."}},
+          {"kind": "pending_action", "id": "pending-adversarial-evaluators", "payload": {"text": "Build adversarial evaluators before large dataset generation."}}
+        ]
+      },
+      "metadata": {"scenario_family": "mixed-state", "generator_version": "manual-pilot-v1", "labels": {"signal": "semantic-episodic"}}
+    }
+  ]
+}

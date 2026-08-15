@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 
 class FrozenModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+CheckpointItem = Annotated[str, Field(min_length=1)]
 
 
 class HistoryMessage(FrozenModel):
@@ -26,31 +29,107 @@ class CanonicalAnchor(FrozenModel):
     payload: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class EvaluationContract(FrozenModel):
+    """Deterministic constraints that a semantic judge must not override."""
+
+    forbidden_phrases: tuple[CheckpointItem, ...] = ()
+    sensitive_values: tuple[CheckpointItem, ...] = ()
+
+    @model_validator(mode="after")
+    def require_unique_non_empty_values(self) -> EvaluationContract:
+        for field_name in ("forbidden_phrases", "sensitive_values"):
+            values = getattr(self, field_name)
+            if len({value.casefold() for value in values}) != len(values):
+                raise ValueError(f"{field_name} cannot contain duplicate values.")
+        return self
+
+
 class SummarizationInput(FrozenModel):
     example_id: str = Field(min_length=1)
     messages: tuple[HistoryMessage, ...]
     anchors: tuple[CanonicalAnchor, ...] = ()
+    evaluation: EvaluationContract = Field(default_factory=EvaluationContract)
     max_output_chars: int = Field(default=8_000, ge=256)
 
     @model_validator(mode="after")
     def require_history(self) -> SummarizationInput:
         if not self.messages:
             raise ValueError("A summarization input must contain at least one message.")
+        anchor_ids = tuple(anchor.id for anchor in self.anchors)
+        if len(anchor_ids) != len(set(anchor_ids)):
+            raise ValueError("Canonical anchor IDs must be unique within one history.")
         return self
 
 
 class SummaryCheckpoint(FrozenModel):
-    current_objective: str
-    constraints: tuple[str, ...] = ()
-    decisions: tuple[str, ...] = ()
-    completed_actions: tuple[str, ...] = ()
-    resources: tuple[str, ...] = ()
-    unresolved_problems: tuple[str, ...] = ()
-    pending_actions: tuple[str, ...] = ()
-    lifecycle_outcomes: tuple[str, ...] = ()
-    uncertainties: tuple[str, ...] = ()
-    artifact_ids: tuple[str, ...] = ()
-    anchors: tuple[CanonicalAnchor, ...] = ()
+    current_objective: CheckpointItem = Field(
+        description="The one active objective a fresh agent should continue now."
+    )
+    operating_rules: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Current durable user or repository rules; omit superseded rules.",
+    )
+    project_context: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description=(
+            "Stable project architecture, semantics, and facts needed for future decisions."
+        ),
+    )
+    constraints: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Active task or scope constraints that still apply.",
+    )
+    decisions: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Effective decisions after applying later corrections and replacements.",
+    )
+    recent_progress: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="A concise account of recent meaningful work, not a turn-by-turn narrative.",
+    )
+    current_execution_state: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Current branch, validation, runtime, or implementation state when known.",
+    )
+    completed_actions: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Verified completed work that should not be repeated.",
+    )
+    resources: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description=(
+            "Concrete files, URLs, commits, branches, or named resources needed to continue."
+        ),
+    )
+    unresolved_problems: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Problems that remain open; do not include resolved failures.",
+    )
+    pending_actions: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Specific next actions that remain to be performed.",
+    )
+    lifecycle_outcomes: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description="Verified test, build, commit, deployment, or publication outcomes.",
+    )
+    uncertainties: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description=(
+            "Material uncertainty explicitly present in the source; do not invent uncertainty."
+        ),
+    )
+    artifact_ids: tuple[CheckpointItem, ...] = Field(
+        default=(),
+        description=(
+            "Exact opaque artifact ref IDs explicitly returned by artifact tools and still needed. "
+            "Anchor IDs, tool call IDs, filenames, and inferred IDs are not artifact refs."
+        ),
+    )
+    anchors: tuple[CanonicalAnchor, ...] = Field(
+        default=(),
+        description="Canonical input anchors copied exactly, with unchanged IDs and payloads.",
+    )
 
 
 class ExampleMetadata(FrozenModel):
@@ -69,6 +148,17 @@ class HistoryExample(FrozenModel):
     def align_identity(self) -> HistoryExample:
         if self.id != self.input.example_id:
             raise ValueError("HistoryExample.id must match input.example_id.")
+        expected_text = json.dumps(
+            self.expected.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+        ).casefold()
+        for field_name in ("forbidden_phrases", "sensitive_values"):
+            for value in getattr(self.input.evaluation, field_name):
+                if value.casefold() in expected_text:
+                    raise ValueError(
+                        f"HistoryExample.expected cannot contain {field_name} value {value!r}."
+                    )
         return self
 
 
@@ -113,6 +203,27 @@ class CheckpointEvaluation(FrozenModel):
     hard_pass: bool
     feedback: tuple[str, ...] = ()
     metrics: dict[str, float | int | bool] = Field(default_factory=dict)
+
+
+class SemanticJudgement(FrozenModel):
+    operating_rule_fidelity: float = Field(ge=0.0, le=1.0)
+    project_context_fidelity: float = Field(ge=0.0, le=1.0)
+    current_state_fidelity: float = Field(ge=0.0, le=1.0)
+    recent_progress_fidelity: float = Field(ge=0.0, le=1.0)
+    latest_wins_fidelity: float = Field(ge=0.0, le=1.0)
+    grounded: bool
+    critical_omissions: tuple[str, ...] = ()
+    feedback: tuple[str, ...] = ()
+
+    @property
+    def score(self) -> float:
+        return (
+            self.operating_rule_fidelity * 0.30
+            + self.project_context_fidelity * 0.20
+            + self.current_state_fidelity * 0.20
+            + self.recent_progress_fidelity * 0.15
+            + self.latest_wins_fidelity * 0.15
+        )
 
 
 class OptimizationOutcome(FrozenModel):
@@ -165,10 +276,12 @@ __all__ = (
     "CertificationOutcome",
     "CheckpointEvaluation",
     "DatasetBundle",
+    "EvaluationContract",
     "ExampleMetadata",
     "HistoryExample",
     "HistoryMessage",
     "OptimizationOutcome",
+    "SemanticJudgement",
     "SummarizationInput",
     "SummaryCheckpoint",
 )

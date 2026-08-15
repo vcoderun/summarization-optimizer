@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from autobench import (
     AssetDiscoverySettings,
+    AssetRepresentation,
     Benchmark,
     Case,
     Direction,
@@ -45,7 +46,10 @@ def optimization_benchmark(config: CampaignConfig) -> Benchmark:
                 detail=config.instrumentation.detail,
                 assets=AssetDiscoverySettings(
                     discover=True,
-                    representations=("definition", "effective"),
+                    representations=(
+                        AssetRepresentation.DEFINITION,
+                        AssetRepresentation.EFFECTIVE,
+                    ),
                     include=("prompt", "system_prompt"),
                 ),
             )
@@ -102,6 +106,7 @@ def _certification_case(
             "example": example.model_dump(mode="json"),
             "invoker_target": config.invoker_target,
             "evaluator_target": config.evaluator_target,
+            "models": config.models.model_dump(mode="json"),
         },
         expected={"hard_pass": True},
         metadata={

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from autobench import Case, RunContext
 from pydantic import BaseModel, ConfigDict
 
-from .config import CampaignConfig
+from .codex_runtime import configure_codex_runtime
+from .config import CampaignConfig, CodexModelsSettings
 from .dataset import load_dataset
 from .models import (
     CertificationCaseOutcome,
@@ -13,7 +16,7 @@ from .models import (
     OptimizationOutcome,
 )
 from .optimization import optimize_campaign
-from .ports import CheckpointEvaluator, SummarizerInvoker, evaluate, invoke, typed_target
+from .ports import CheckpointEvaluator, SummarizerInvoker, aevaluate, ainvoke, typed_target
 
 
 class OptimizationTaskInput(BaseModel):
@@ -29,20 +32,23 @@ class CertificationTaskInput(BaseModel):
     example: HistoryExample
     invoker_target: str
     evaluator_target: str
+    models: CodexModelsSettings
 
 
-def run_optimization(_ctx: RunContext, case: Case) -> OptimizationOutcome:
+async def run_optimization(_ctx: RunContext, case: Case) -> OptimizationOutcome:
     task_input = OptimizationTaskInput.model_validate(case.input)
+    configure_codex_runtime(task_input.config.models)
     dataset = load_dataset(task_input.config.dataset_path)
-    return optimize_campaign(task_input.config, dataset)
+    return await asyncio.to_thread(optimize_campaign, task_input.config, dataset)
 
 
-def run_certification(_ctx: RunContext, case: Case) -> CertificationCaseOutcome:
+async def run_certification(_ctx: RunContext, case: Case) -> CertificationCaseOutcome:
     task_input = CertificationTaskInput.model_validate(case.input)
+    configure_codex_runtime(task_input.models)
     invoker = typed_target(task_input.invoker_target, SummarizerInvoker)
     evaluator = typed_target(task_input.evaluator_target, CheckpointEvaluator)
-    output = invoke(invoker, task_input.instructions, task_input.example.input)
-    result = evaluate(
+    output = await ainvoke(invoker, task_input.instructions, task_input.example.input)
+    result = await aevaluate(
         evaluator,
         task_input.example.input,
         output,

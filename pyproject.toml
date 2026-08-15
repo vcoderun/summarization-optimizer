@@ -5,12 +5,15 @@ description = "Offline optimization and certification pipeline for Kedi history 
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "autobench[pydantic-ai,pydantic-gepa]",
+    "codex-auth-helper==1.6.1",
+    "pydantic-gepa[integrations]",
     "pydantic>=2.12,<3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "pytest-asyncio>=1.3",
     "pytest-cov>=6",
     "ruff>=0.12",
 ]
@@ -26,7 +29,8 @@ build-backend = "hatchling.build"
 packages = ["src/kedi_summarization_optimizer"]
 
 [tool.uv.sources]
-autobench = { path = "../../../autobench/workspace/autobench", editable = true }
+autobench = { git = "https://github.com/vcoderun/autobench.git", rev = "27a32d8ea8b1efef01ddfa90721532b7af158860" }
+pydantic-gepa = { git = "https://github.com/vcoderun/pydantic-gepa.git", rev = "a39694b1debd1a33148bb4e1f036662a29ae3848" }
 
 [tool.pytest.ini_options]
 addopts = "-q"

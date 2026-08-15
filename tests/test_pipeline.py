@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from autobench import load_experiment_record, load_run_record, replay_experiment
+from pydantic_gepa.state.models import content_fingerprint
 
 from kedi_summarization_optimizer import (
     DatasetBundle,
@@ -13,6 +14,7 @@ from kedi_summarization_optimizer import (
 )
 from kedi_summarization_optimizer.benchmarks import optimization_benchmark
 from kedi_summarization_optimizer.dataset import to_gepa_split
+from kedi_summarization_optimizer.optimization import _gepa_config
 from kedi_summarization_optimizer.pipeline import PipelineError
 
 ROOT = Path(__file__).parents[1]
@@ -53,6 +55,49 @@ def test_config_and_dataset_are_valid_without_running_models() -> None:
     assert config.gepa.proposer_target is not None
     assert len(dataset.fingerprints()["heldout"]) == 64
     assert to_gepa_split(dataset, seed=0).test == ()
+
+
+def test_adversarial_pilot_dataset_covers_distinct_unseen_scenarios() -> None:
+    dataset = DatasetBundle.model_validate_json(
+        (EXAMPLES / "pilot_dataset_v1.json").read_text(encoding="utf-8")
+    )
+
+    assert len(dataset.train) == 3
+    assert len(dataset.validation) == 2
+    assert len(dataset.heldout) == 2
+    assert len(set(dataset.fingerprints().values())) == 3
+    assert {example.metadata.scenario_family for example in dataset.heldout} == {
+        "mixed-state",
+        "secret-artifact",
+    }
+    assert all(example.input.evaluation for example in dataset.validation + dataset.heldout)
+
+
+def test_real_pilot_uses_high_effort_codex_roles_and_native_reflection() -> None:
+    config = load_campaign_config(EXAMPLES / "pilot_campaign.json")
+
+    assert config.models.summarizer.model_id == "gpt-5.6-luna"
+    assert config.models.summarizer.effort == "high"
+    assert config.models.reflector.model_id == "gpt-5.6-terra"
+    assert config.models.reflector.effort == "high"
+    assert config.models.judge.model_id == "gpt-5.6-terra"
+    assert config.models.judge.effort == "high"
+    assert config.gepa.reflection_target == (
+        "kedi_summarization_optimizer.codex_runtime:terra_reflect"
+    )
+    assert config.gepa.proposer_target is None
+    assert config.gepa.resume == "if_exists"
+
+
+def test_real_pilot_reflection_config_is_checkpoint_fingerprint_safe() -> None:
+    config = load_campaign_config(EXAMPLES / "pilot_campaign.json")
+    dataset = DatasetBundle.model_validate_json(
+        (EXAMPLES / "pilot_dataset_v1.json").read_text(encoding="utf-8")
+    )
+
+    fingerprint = content_fingerprint(_gepa_config(config, dataset).to_backend_kwargs())
+
+    assert len(fingerprint) == 64
 
 
 def test_optimization_enables_gepa_and_pydantic_ai_instrumentation() -> None:

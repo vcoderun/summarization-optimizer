@@ -60,7 +60,18 @@ def invoke(
 ) -> SummaryCheckpoint:
     result = target(instructions, inputs)
     if inspect.isawaitable(result):
-        result = run_awaitable_sync(cast("Awaitable[SummaryCheckpoint]", result))
+        result = run_awaitable_sync(result)
+    return SummaryCheckpoint.model_validate(result)
+
+
+async def ainvoke(
+    target: SummarizerInvoker,
+    instructions: str,
+    inputs: SummarizationInput,
+) -> SummaryCheckpoint:
+    result = target(instructions, inputs)
+    if inspect.isawaitable(result):
+        result = await result
     return SummaryCheckpoint.model_validate(result)
 
 
@@ -72,7 +83,19 @@ def evaluate(
 ) -> CheckpointEvaluation:
     result = target(inputs, output, expected)
     if inspect.isawaitable(result):
-        result = run_awaitable_sync(cast("Awaitable[CheckpointEvaluation]", result))
+        result = run_awaitable_sync(result)
+    return CheckpointEvaluation.model_validate(result)
+
+
+async def aevaluate(
+    target: CheckpointEvaluator,
+    inputs: SummarizationInput,
+    output: SummaryCheckpoint,
+    expected: SummaryCheckpoint,
+) -> CheckpointEvaluation:
+    result = target(inputs, output, expected)
+    if inspect.isawaitable(result):
+        result = await result
     return CheckpointEvaluation.model_validate(result)
 
 
@@ -85,6 +108,8 @@ __all__ = (
     "CandidateProposer",
     "CheckpointEvaluator",
     "SummarizerInvoker",
+    "aevaluate",
+    "ainvoke",
     "evaluate",
     "invoke",
     "resolve_target",

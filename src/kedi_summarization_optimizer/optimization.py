@@ -20,6 +20,7 @@ from pydantic_gepa.configuration import (
     ReflectionConfig,
     RunConfig,
 )
+from pydantic_gepa.reflection import ReflectionFunction
 
 from .config import CampaignConfig
 from .dataset import to_gepa_split
@@ -33,8 +34,9 @@ from .ports import (
     CandidateProposer,
     CheckpointEvaluator,
     SummarizerInvoker,
-    evaluate,
-    invoke,
+    aevaluate,
+    ainvoke,
+    resolve_target,
     typed_target,
 )
 
@@ -59,16 +61,16 @@ def optimize_campaign(
     evaluator = typed_target(config.evaluator_target, CheckpointEvaluator)
     data = to_gepa_split(dataset, seed=config.gepa.seed)
 
-    def run_target(inputs: SummarizationInput) -> SummaryCheckpoint:
-        return invoke(invoker, active_instructions.require(), inputs)
+    async def run_target(inputs: SummarizationInput) -> SummaryCheckpoint:
+        return await ainvoke(invoker, active_instructions.require(), inputs)
 
-    def score_target(context: object) -> Mapping[str, MetricResult]:
+    async def score_target(context: object) -> Mapping[str, MetricResult]:
         inputs = cast("SummarizationInput", getattr(context, "inputs"))
         output = cast("SummaryCheckpoint", getattr(context, "output"))
         expected = cast("SummaryCheckpoint | None", getattr(context, "expected_output"))
         if expected is None:
             raise ValueError("Every optimization example must define expected_output.")
-        result = evaluate(evaluator, inputs, output, expected)
+        result = await aevaluate(evaluator, inputs, output, expected)
         feedback = "\n".join(result.feedback) or None
         return {
             OBJECTIVE_NAME: MetricResult(
@@ -126,9 +128,13 @@ def _gepa_config(config: CampaignConfig, dataset: DatasetBundle) -> GEPAConfig:
         if config.gepa.proposer_target is None
         else typed_target(config.gepa.proposer_target, CandidateProposer)
     )
+    reflection_model: str | ReflectionFunction | None = config.gepa.reflection_model
+    if config.gepa.reflection_target is not None:
+        reflection_model = cast("ReflectionFunction", resolve_target(config.gepa.reflection_target))
+
     return GEPAConfig(
         reflection=ReflectionConfig(
-            model=config.gepa.reflection_model,
+            model=reflection_model,
             proposer=proposer,
             minibatch_size=config.gepa.reflection_minibatch_size,
         ),
@@ -148,6 +154,7 @@ def _gepa_config(config: CampaignConfig, dataset: DatasetBundle) -> GEPAConfig:
                 },
                 "invoker_target": config.invoker_target,
                 "evaluator_target": config.evaluator_target,
+                "models": config.models.model_dump_json(),
             },
             seed=config.gepa.seed,
             cache_evaluations=config.gepa.cache_evaluations,

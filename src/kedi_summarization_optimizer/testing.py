@@ -29,14 +29,22 @@ def deterministic_invoker(
     objective = next(
         message.content for message in reversed(inputs.messages) if message.role == "user"
     )
+    operating_rules = _anchor_values(inputs.anchors, "operating_rule")
+    project_context = _anchor_values(inputs.anchors, "project_context")
     constraints = _anchor_values(inputs.anchors, "constraint")
     pending = _anchor_values(inputs.anchors, "pending_action")
     decisions = _anchor_values(inputs.anchors, "decision")
+    recent_progress = _anchor_values(inputs.anchors, "recent_progress")
+    execution_state = _anchor_values(inputs.anchors, "execution_state")
     resources = _anchor_values(inputs.anchors, "resource")
     return SummaryCheckpoint(
         current_objective=objective,
+        operating_rules=operating_rules,
+        project_context=project_context,
         constraints=constraints,
         decisions=decisions,
+        recent_progress=recent_progress,
+        current_execution_state=execution_state,
         resources=resources,
         pending_actions=pending,
         anchors=inputs.anchors,

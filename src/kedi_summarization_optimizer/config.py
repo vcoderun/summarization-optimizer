@@ -12,10 +12,32 @@ class FrozenConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+ReasoningEffort = Literal["low", "medium", "high", "xhigh"]
+
+
+class CodexModelRole(FrozenConfig):
+    model_id: str = Field(min_length=1)
+    effort: ReasoningEffort = "high"
+
+
+class CodexModelsSettings(FrozenConfig):
+    summarizer: CodexModelRole = Field(
+        default_factory=lambda: CodexModelRole(model_id="gpt-5.6-luna")
+    )
+    reflector: CodexModelRole = Field(
+        default_factory=lambda: CodexModelRole(model_id="gpt-5.6-terra")
+    )
+    judge: CodexModelRole = Field(default_factory=lambda: CodexModelRole(model_id="gpt-5.6-terra"))
+
+
 class GEPASettings(FrozenConfig):
     max_metric_calls: int = Field(default=100, ge=1)
     max_concurrency: int = Field(default=5, ge=1)
     reflection_model: str | None = None
+    reflection_target: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_][\w.]*$",
+    )
     proposer_target: str | None = None
     reflection_minibatch_size: int = Field(default=3, ge=1)
     seed: int = 0
@@ -26,9 +48,15 @@ class GEPASettings(FrozenConfig):
 
     @model_validator(mode="after")
     def require_reflection_strategy(self) -> GEPASettings:
-        choices = (self.reflection_model is not None, self.proposer_target is not None)
+        choices = (
+            self.reflection_model is not None,
+            self.reflection_target is not None,
+            self.proposer_target is not None,
+        )
         if sum(choices) != 1:
-            raise ValueError("Set exactly one of reflection_model or proposer_target.")
+            raise ValueError(
+                "Set exactly one of reflection_model, reflection_target, or proposer_target."
+            )
         if self.fresh and self.resume != "never":
             raise ValueError("fresh cannot be combined with a resume mode.")
         return self
@@ -53,6 +81,7 @@ class CampaignConfig(FrozenConfig):
     output_dir: Path
     invoker_target: str = Field(pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_][\w.]*$")
     evaluator_target: str = Field(pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_][\w.]*$")
+    models: CodexModelsSettings = Field(default_factory=CodexModelsSettings)
     gepa: GEPASettings
     instrumentation: InstrumentationSettings = Field(default_factory=InstrumentationSettings)
     certification: CertificationSettings = Field(default_factory=CertificationSettings)
@@ -91,6 +120,8 @@ def _resolve_path(path: Path, base: Path) -> Path:
 __all__ = (
     "CampaignConfig",
     "CertificationSettings",
+    "CodexModelRole",
+    "CodexModelsSettings",
     "GEPASettings",
     "InstrumentationSettings",
     "load_campaign_config",
