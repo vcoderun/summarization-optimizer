@@ -29,7 +29,7 @@ build-backend = "hatchling.build"
 packages = ["src/kedi_summarization_optimizer"]
 
 [tool.uv.sources]
-autobench = { git = "https://github.com/vcoderun/autobench.git", rev = "27a32d8ea8b1efef01ddfa90721532b7af158860" }
+autobench = { git = "https://github.com/vcoderun/autobench.git", rev = "df61931f4338144130019c45f79fb2bb707d7cc5" }
 pydantic-gepa = { git = "https://github.com/vcoderun/pydantic-gepa.git", rev = "a39694b1debd1a33148bb4e1f036662a29ae3848" }
 
 [tool.pytest.ini_options]
