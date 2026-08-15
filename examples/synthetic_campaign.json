@@ -1,0 +1,43 @@
+{
+  "campaign_id": "kedi-summary-synthetic-v1",
+  "seed_instructions": "Reconstruct the effective current project state for a fresh agent epoch. Apply the latest applicable user instruction when statements conflict. Preserve durable operating rules, project facts, active decisions, current execution state, unresolved work, concise recent progress, verified lifecycle outcomes, resources, canonical anchors, and still-live artifact references. Exclude superseded instructions, resolved failures presented as open, conversational noise, partial output presented as final, unsupported completion claims, and sensitive values.",
+  "dataset_path": "../datasets/synthetic_v1.json",
+  "output_dir": "../runs/synthetic-v1",
+  "invoker_target": "kedi_summarization_optimizer.codex_runtime:codex_invoker",
+  "evaluator_target": "kedi_summarization_optimizer.codex_runtime:codex_evaluator",
+  "models": {
+    "summarizer": {
+      "model_id": "gpt-5.6-luna",
+      "effort": "high"
+    },
+    "reflector": {
+      "model_id": "gpt-5.6-terra",
+      "effort": "high"
+    },
+    "judge": {
+      "model_id": "gpt-5.6-terra",
+      "effort": "high"
+    }
+  },
+  "gepa": {
+    "max_metric_calls": 96,
+    "max_concurrency": 4,
+    "reflection_target": "kedi_summarization_optimizer.codex_runtime:terra_reflect",
+    "reflection_minibatch_size": 4,
+    "seed": 20260815,
+    "resume": "if_exists",
+    "checkpoint_interval": 1,
+    "cache_evaluations": true
+  },
+  "instrumentation": {
+    "detail": "full",
+    "include_pydantic_ai": true,
+    "include_httpx": false
+  },
+  "certification": {
+    "minimum_mean_score": 0.9,
+    "minimum_case_score": 0.8,
+    "require_all_hard_pass": true
+  },
+  "record_durability": "synced"
+}

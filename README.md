@@ -20,8 +20,27 @@ The full model-backed pipeline is implemented and has completed an end-to-end pi
 - Publication is atomic and occurs only when every configured certification gate passes.
 
 The pilot validates the architecture and integrations. Its two-case held-out split is not enough
-to claim that the prompt is ready for production Kedi history compaction. The next campaign needs a
-larger, independently reviewed, high-token dataset.
+to claim that the prompt is ready for production Kedi history compaction. A deterministic 24-case,
+high-context synthetic corpus now provides the next campaign input, but its results still require
+independent review before a prompt can move into Kedi.
+
+## Synthetic dataset
+
+Generate the versioned corpus without model calls:
+
+```bash
+uv run kedi-summarization-optimize generate-dataset datasets/synthetic_v1.json
+```
+
+Generation is seed-based and deterministic. A scenario compiler owns expected checkpoints,
+canonical anchors, stale-state exclusions, lifecycle truth, valid artifact references, and
+synthetic secret canaries. Models do not author the ground truth. The twelve scenario families are
+isolated by split, with two variants each and at least 24000 source-history characters per case.
+
+The checked-in `datasets/synthetic_v1.json` is pinned by split fingerprints and a regression test
+that reproduces it from the default generator. See
+[datasets/README.md](datasets/README.md) for provenance, coverage, fingerprints, and publication
+rules.
 
 ## Checkpoint contract
 
@@ -121,6 +140,21 @@ Run the model-backed pilot:
 
 ```bash
 uv run kedi-summarization-optimize run examples/pilot_campaign.json
+```
+
+Validate the larger synthetic campaign without spending model calls:
+
+```bash
+uv run kedi-summarization-optimize validate examples/synthetic_campaign.json
+```
+
+The real synthetic campaign uses Luna high for checkpoint generation and Terra high for reflection
+and semantic judging. It has a 96-call GEPA budget, exact checkpoint resume, full Pydantic AI and
+Pydantic-GEPA evidence capture, and stricter held-out publication thresholds than the pilot. Run it
+only after reviewing the dataset and campaign budget:
+
+```bash
+uv run kedi-summarization-optimize run examples/synthetic_campaign.json
 ```
 
 Replay or report the two durable evidence records independently:

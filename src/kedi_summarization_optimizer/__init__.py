@@ -1,6 +1,12 @@
 """Kedi summarization optimization pipeline."""
 
 from .config import CampaignConfig, CodexModelRole, CodexModelsSettings, load_campaign_config
+from .generation import (
+    SyntheticDatasetConfig,
+    generate_synthetic_dataset,
+    synthetic_dataset_summary,
+    write_synthetic_dataset,
+)
 from .models import (
     CampaignOutcome,
     CheckpointEvaluation,
@@ -28,5 +34,9 @@ __all__ = (
     "SummarizationInput",
     "SummarizationOptimizationPipeline",
     "SummaryCheckpoint",
+    "SyntheticDatasetConfig",
+    "generate_synthetic_dataset",
     "load_campaign_config",
+    "synthetic_dataset_summary",
+    "write_synthetic_dataset",
 )
