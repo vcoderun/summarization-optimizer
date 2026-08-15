@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from threading import RLock
 from typing import cast
 
 from codex_auth_helper import CodexResponsesModel, create_codex_responses_model
-from pydantic import Field, field_validator
+from pydantic import Field, model_validator
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIResponsesModelSettings
 from pydantic_gepa.integrations.pydantic_ai import PydanticAIReflectionModel
@@ -60,6 +61,10 @@ context-independent imperative instructions that remain correct for unseen histo
 sentence must tell the production summarizer what to do. Do not analyze, quote, paraphrase, or
 describe the current candidate, observed failures, aggregate evidence, or a current history. Do not
 include observations, counts, scores, metric names, or claims that some state is currently absent.
+Return 5-16 rules in the structured rules field. Make each rule exactly one sentence and begin it
+with an imperative verb or a reusable If/When condition.
+Express absence handling conditionally as a reusable rule; never assert that information is absent
+from the current input. A proposal containing a present-state observation will be rejected.
 The production model receives ordered_history, canonical_anchors, max_output_chars, and a separately
 enforced output schema. Never mention optimizer internals, datasets, examples, judges, expected
 outputs, validation gates, or specific Kedi fixtures and syntax. Do not restate the output schema.
@@ -97,6 +102,8 @@ _FORBIDDEN_PROPOSAL_FRAGMENTS = (
     "> import:",
     "aggregate evidence",
     "aggregate failure",
+    "are available in",
+    "are retained in this",
     "current active work",
     "current candidate",
     "current canonical anchors",
@@ -121,6 +128,9 @@ _FORBIDDEN_PROPOSAL_FRAGMENTS = (
     "luna high",
     "mean score",
     "metric name",
+    "next state update",
+    "no project-specific",
+    "no sensitive values",
     "observed failure",
     "recorded failure",
     "run_main",
@@ -130,30 +140,83 @@ _FORBIDDEN_PROPOSAL_FRAGMENTS = (
     "terra high",
     "there are no",
     "this exact schema",
+    "until then",
     "validation set",
     "virtual python",
+)
+_OBSERVATIONAL_ABSENCE = re.compile(r"\b(?:no|none)\b", re.IGNORECASE)
+_MULTIPLE_SENTENCES = re.compile(r"[.!?]\s+\S")
+_IMPERATIVE_RULE_PREFIXES = (
+    "apply ",
+    "avoid ",
+    "carry ",
+    "classify ",
+    "compress ",
+    "distinguish ",
+    "do ",
+    "exclude ",
+    "if ",
+    "include ",
+    "keep ",
+    "limit ",
+    "maintain ",
+    "mark ",
+    "never ",
+    "omit ",
+    "prefer ",
+    "preserve ",
+    "prioritize ",
+    "reconstruct ",
+    "record ",
+    "reject ",
+    "remove ",
+    "resolve ",
+    "retain ",
+    "treat ",
+    "use ",
+    "verify ",
+    "when ",
 )
 
 
 class PromptProposal(FrozenModel):
     """Validated mutation text that can be shipped into the runtime unchanged."""
 
-    instructions: str = Field(min_length=300, max_length=MAX_PROPOSAL_CHARS)
+    rules: tuple[str, ...] = Field(min_length=5, max_length=16)
 
-    @field_validator("instructions")
-    @classmethod
-    def require_provider_neutral_instructions(cls, value: str) -> str:
-        normalized = value.strip()
-        folded = normalized.casefold()
-        forbidden = tuple(
-            fragment for fragment in _FORBIDDEN_PROPOSAL_FRAGMENTS if fragment.casefold() in folded
-        )
-        if forbidden:
-            raise ValueError(
-                "Proposal contains optimizer-only or case-specific material: "
-                + ", ".join(forbidden)
+    @model_validator(mode="after")
+    def require_provider_neutral_instructions(self) -> PromptProposal:
+        for rule in self.rules:
+            normalized = rule.strip()
+            folded = normalized.casefold()
+            forbidden = tuple(
+                fragment
+                for fragment in _FORBIDDEN_PROPOSAL_FRAGMENTS
+                if fragment.casefold() in folded
             )
-        return normalized
+            if forbidden:
+                raise ValueError(
+                    "Proposal contains optimizer-only or case-specific material: "
+                    + ", ".join(forbidden)
+                )
+            if _OBSERVATIONAL_ABSENCE.search(normalized):
+                raise ValueError(
+                    "Proposal contains a present-state absence claim instead of a reusable rule."
+                )
+            if "\n" in normalized or _MULTIPLE_SENTENCES.search(normalized):
+                raise ValueError("Each proposal rule must be one sentence.")
+            if not folded.startswith(_IMPERATIVE_RULE_PREFIXES):
+                raise ValueError("Each proposal rule must be imperative or conditional.")
+
+        if not 300 <= len(self.instructions) <= MAX_PROPOSAL_CHARS:
+            raise ValueError(
+                f"Combined proposal must contain between 300 and {MAX_PROPOSAL_CHARS} characters."
+            )
+        return self
+
+    @property
+    def instructions(self) -> str:
+        return "\n".join(f"- {rule.strip()}" for rule in self.rules)
 
 
 @dataclass(frozen=True, slots=True)

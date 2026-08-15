@@ -63,19 +63,33 @@ def test_redaction_removes_every_evaluator_canary() -> None:
 
 def test_prompt_proposal_rejects_optimizer_only_and_oversized_text() -> None:
     valid = (
-        "Reconstruct current state from ordered history. Prefer explicit evidence and later "
-        "applicable instructions. Preserve durable rules, active work, verified lifecycle "
-        "outcomes, useful resources, and live references. Remove stale, resolved, unrelated, "
-        "or sensitive content. Keep the checkpoint compact enough for a fresh agent to continue."
+        "Reconstruct current state from ordered history using explicit evidence and applicable "
+        "instructions.",
+        "Preserve durable rules, active work, verified lifecycle outcomes, useful resources, and "
+        "live references.",
+        "Resolve conflicting statements within their shared subject and scope by applying the "
+        "latest instruction.",
+        "Retain uncertainty when evidence is incomplete and the gap affects continuation.",
+        "Remove stale, resolved, unrelated, duplicated, and sensitive content.",
+        "Keep the checkpoint compact enough for a fresh agent to continue the active work.",
     )
 
-    assert codex_runtime.PromptProposal(instructions=valid).instructions == valid
+    expected = "\n".join(f"- {rule}" for rule in valid)
+    assert codex_runtime.PromptProposal(rules=valid).instructions == expected
     with pytest.raises(ValidationError, match="optimizer-only"):
-        codex_runtime.PromptProposal(instructions=valid + " Read evaluation constraints.")
+        codex_runtime.PromptProposal(rules=(*valid[:-1], "Use evaluation constraints."))
     with pytest.raises(ValidationError, match="optimizer-only"):
-        codex_runtime.PromptProposal(instructions=valid + " The mean score is low.")
-    with pytest.raises(ValidationError, match="at most"):
-        codex_runtime.PromptProposal(instructions="x" * 4_501)
+        codex_runtime.PromptProposal(rules=(*valid[:-1], "Improve the mean score."))
+    with pytest.raises(ValidationError, match="absence claim"):
+        codex_runtime.PromptProposal(rules=(*valid[:-1], "Retain no durable state."))
+    with pytest.raises(ValidationError, match="one sentence"):
+        codex_runtime.PromptProposal(
+            rules=(*valid[:-1], "Preserve active work. Remove stale work.")
+        )
+    with pytest.raises(ValidationError, match="imperative"):
+        codex_runtime.PromptProposal(rules=(*valid[:-1], "Active work should remain available."))
+    with pytest.raises(ValidationError, match="between 300"):
+        codex_runtime.PromptProposal(rules=tuple("Preserve " + "x" * 900 for _ in range(5)))
 
 
 def test_reflection_evidence_excludes_raw_benchmark_material() -> None:
@@ -125,15 +139,16 @@ def test_reflection_evidence_excludes_raw_benchmark_material() -> None:
 def test_terra_proposer_sends_only_sanitized_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    instructions = (
-        "Reconstruct current project state using explicit evidence. Apply later instructions by "
-        "subject, retain durable rules and unresolved work, and preserve verified lifecycle "
-        "outcomes. Exclude stale, unrelated, invalidated, or sensitive material. Keep the result "
-        "compact and useful to a fresh agent. Resolve conflicting statements only within their "
-        "shared subject and scope, retain uncertainty where evidence is incomplete, and "
-        "distinguish successful completion from failed, cancelled, or merely attempted work. "
-        "Preserve only references that remain necessary for continuation."
+    rules = (
+        "Reconstruct current project state using explicit evidence and later applicable "
+        "instructions.",
+        "Retain durable rules and unresolved work while preserving verified lifecycle outcomes.",
+        "Exclude stale, unrelated, invalidated, duplicated, and sensitive material.",
+        "Resolve conflicting statements only within their shared subject and scope.",
+        "Distinguish successful completion from failed, cancelled, or merely attempted work.",
+        "Preserve only references that remain necessary for continuation.",
     )
+    instructions = "\n".join(f"- {rule}" for rule in rules)
 
     class _ProposalResult(BaseModel):
         output: codex_runtime.PromptProposal
@@ -143,7 +158,7 @@ def test_terra_proposer_sends_only_sanitized_evidence(
 
         def run_sync(self, prompt: str) -> _ProposalResult:
             self.prompt = prompt
-            return _ProposalResult(output=codex_runtime.PromptProposal(instructions=instructions))
+            return _ProposalResult(output=codex_runtime.PromptProposal(rules=rules))
 
     proposer = _Proposer()
 
