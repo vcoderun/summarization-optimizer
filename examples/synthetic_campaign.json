@@ -1,8 +1,8 @@
 {
-  "campaign_id": "kedi-summary-synthetic-v1",
-  "seed_instructions": "Reconstruct the effective current project state for a fresh agent epoch. Apply the latest applicable user instruction when statements conflict. Preserve durable operating rules, project facts, active decisions, current execution state, unresolved work, concise recent progress, verified lifecycle outcomes, resources, canonical anchors, and still-live artifact references. Exclude superseded instructions, resolved failures presented as open, conversational noise, partial output presented as final, unsupported completion claims, and sensitive values.",
-  "dataset_path": "../datasets/synthetic_v1.json",
-  "output_dir": "../runs/synthetic-v1",
+  "campaign_id": "kedi-summary-synthetic-v2",
+  "seed_instructions": "Reconstruct the effective current project state for a fresh agent epoch. Apply later instructions only to the subjects they actually replace. Preserve durable rules, Kedi architecture and semantics, active decisions, current execution state, unresolved work, concise relevant progress, verified lifecycle outcomes, concrete resources, canonical anchors, and still-live artifact references. Exclude stale hypotheses, resolved failures presented as open, unrelated completed side work, inactive tool output, partial output presented as final, unsupported completion claims, released references, and sensitive values. Keep the checkpoint compact and evidence-backed.",
+  "dataset_path": "../datasets/synthetic_v2.json",
+  "output_dir": "../runs/synthetic-v2",
   "invoker_target": "kedi_summarization_optimizer.codex_runtime:codex_invoker",
   "evaluator_target": "kedi_summarization_optimizer.codex_runtime:codex_evaluator",
   "models": {

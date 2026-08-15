@@ -20,7 +20,7 @@ The full model-backed pipeline is implemented and has completed an end-to-end pi
 - Publication is atomic and occurs only when every configured certification gate passes.
 
 The pilot validates the architecture and integrations. Its two-case held-out split is not enough
-to claim that the prompt is ready for production Kedi history compaction. A deterministic 24-case,
+to claim that the prompt is ready for production Kedi history compaction. A deterministic 40-case,
 high-context synthetic corpus now provides the next campaign input, but its results still require
 independent review before a prompt can move into Kedi.
 
@@ -29,15 +29,16 @@ independent review before a prompt can move into Kedi.
 Generate the versioned corpus without model calls:
 
 ```bash
-uv run kedi-summarization-optimize generate-dataset datasets/synthetic_v1.json
+uv run kedi-summarization-optimize generate-dataset datasets/synthetic_v2.json
 ```
 
 Generation is seed-based and deterministic. A scenario compiler owns expected checkpoints,
 canonical anchors, stale-state exclusions, lifecycle truth, valid artifact references, and
-synthetic secret canaries. Models do not author the ground truth. The twelve scenario families are
-isolated by split, with two variants each and at least 24000 source-history characters per case.
+synthetic secret canaries. Models do not author the ground truth. The twenty Kedi-specific scenario
+families are isolated by split, with two variants each and at least 32000 source-history characters
+per case. Naturalistic old Kedi tasks replace the v1 corpus's uniform inactive-noise batches.
 
-The checked-in `datasets/synthetic_v1.json` is pinned by split fingerprints and a regression test
+The checked-in `datasets/synthetic_v2.json` is pinned by split fingerprints and a regression test
 that reproduces it from the default generator. See
 [datasets/README.md](datasets/README.md) for provenance, coverage, fingerprints, and publication
 rules.

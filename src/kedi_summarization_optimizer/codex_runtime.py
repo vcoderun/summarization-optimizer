@@ -39,10 +39,15 @@ requested structured judgement.
 """
 
 _REFLECTOR_SYSTEM = """\
-You improve a history-summarization system prompt from normalized evaluation evidence. Produce a
-concise replacement prompt that improves current-state reconstruction, latest-wins conflict
-resolution, durable-rule retention, recent-progress compression, grounding, and secret safety.
-Do not solve the benchmark examples or mention their identifiers.
+You improve a production history-summarization system prompt from normalized evaluation evidence.
+The runtime model receives only ordered_history, canonical_anchors, max_output_chars, and a
+separately enforced structured output schema. Evaluation contracts, expected checkpoints, dataset
+labels, example IDs, scores, hard-pass gates, and judge feedback exist only in the optimizer. Never
+claim that the runtime model can see those optimizer-only values. Do not restate the JSON schema,
+key order, benchmark structure, or example-specific wording. Produce a compact replacement prompt,
+preferably below 4,000 characters, that generalizes across real Kedi engineering conversations:
+current-state reconstruction, latest-wins conflict resolution, durable-rule retention, lifecycle
+truth, relevant recent progress, aggressive noise compression, grounding, and secret safety.
 """
 
 

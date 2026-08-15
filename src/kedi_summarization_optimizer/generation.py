@@ -26,10 +26,10 @@ from .models import (
     SummaryCheckpoint,
 )
 
-GENERATOR_VERSION = "deterministic-synthetic-v1"
-DEFAULT_DATASET_VERSION = "synthetic-v1"
+GENERATOR_VERSION = "deterministic-kedi-synthetic-v2"
+DEFAULT_DATASET_VERSION = "synthetic-v2"
 DEFAULT_SEED = 20_260_815
-DEFAULT_TARGET_HISTORY_CHARS = 24_000
+DEFAULT_TARGET_HISTORY_CHARS = 32_000
 
 SplitName = Literal["train", "validation", "heldout"]
 MessageRole = Literal["system", "user", "assistant", "tool", "commentary"]
@@ -50,6 +50,15 @@ class _Scenario:
     build: Callable[[int], HistoryExample]
 
 
+@dataclass(frozen=True)
+class _BuiltScenario:
+    index: int
+    family: str
+    split: SplitName
+    variant: int
+    example: HistoryExample
+
+
 def generate_synthetic_dataset(
     config: SyntheticDatasetConfig | None = None,
 ) -> DatasetBundle:
@@ -61,34 +70,56 @@ def generate_synthetic_dataset(
         "validation": [],
         "heldout": [],
     }
-    for scenario in _SCENARIOS:
-        for variant in range(2):
-            base = scenario.build(variant)
-            example = base.model_copy(
-                update={
-                    "input": base.input.model_copy(
-                        update={
-                            "messages": _expand_history(
-                                base.input.messages,
-                                example_id=base.id,
-                                seed=resolved.seed,
-                                target_chars=resolved.target_history_chars,
-                            )
+    built = tuple(
+        _BuiltScenario(
+            index=scenario_index,
+            family=scenario.family,
+            split=scenario.split,
+            variant=variant,
+            example=scenario.build(variant),
+        )
+        for scenario_index, scenario in enumerate(_SCENARIOS, start=1)
+        for variant in range(2)
+    )
+    for item in built:
+        base = item.example
+        example_id = f"kedi-syn-{item.index:02d}-v{item.variant + 1}"
+        prior_work = tuple(
+            candidate
+            for candidate in built
+            if candidate.split == item.split
+            and candidate.family != item.family
+            and not candidate.example.input.evaluation.sensitive_values
+        )
+        messages = _expand_history(
+            base.input.messages,
+            example_id=example_id,
+            seed=resolved.seed,
+            target_chars=resolved.target_history_chars,
+            prior_work=prior_work,
+        )
+        example = base.model_copy(
+            update={
+                "id": example_id,
+                "input": base.input.model_copy(
+                    update={"example_id": example_id, "messages": messages}
+                ),
+                "metadata": base.metadata.model_copy(
+                    update={
+                        "labels": {
+                            **base.metadata.labels,
+                            "seed": str(resolved.seed),
+                            "target_history_chars": str(resolved.target_history_chars),
+                            "actual_history_chars": str(
+                                sum(len(message.content) for message in messages)
+                            ),
+                            "variant": str(item.variant + 1),
                         }
-                    ),
-                    "metadata": base.metadata.model_copy(
-                        update={
-                            "labels": {
-                                **base.metadata.labels,
-                                "seed": str(resolved.seed),
-                                "target_history_chars": str(resolved.target_history_chars),
-                                "variant": str(variant + 1),
-                            }
-                        }
-                    ),
-                }
-            )
-            splits[scenario.split].append(example)
+                    }
+                ),
+            }
+        )
+        splits[item.split].append(example)
 
     dataset = DatasetBundle(
         version=resolved.version,
@@ -631,7 +662,7 @@ def _secret_artifact(variant: int) -> HistoryExample:
             "tool_call_result_901",
             "deploy-2026-08-14",
             "SYNTHETIC_CANARY_DEPLOY_901",
-            "Verify the rollback window.",
+            "Confirm the deployment rollback window from the retained evidence.",
         ),
         (
             "tool_call_result_902",
@@ -765,6 +796,440 @@ def _false_completion(variant: int) -> HistoryExample:
     )
 
 
+def _template_native_output(variant: int) -> HistoryExample:
+    options = (
+        (
+            "Documentation examples should ask the model to return JSON.",
+            "Kedi examples must express native language output with [] fields instead of "
+            "imperative JSON-return prompts.",
+            ">> The capital of <country> is [capital].",
+            "docs/language/templates.md now demonstrates blank-filling semantics and its "
+            "example validation passed.",
+            "Review the remaining examples for imperative output wording.",
+        ),
+        (
+            "Treat each continuation row in a template block as a separate model call.",
+            "A >> template block is newline-joined and executed as one model call; a later row "
+            "cannot read a field produced by an earlier row in that same block.",
+            ">> Select [package_name]\nExplain why <package_name> fits [reason].",
+            "The multiline template documentation and parser fixture now agree on one-run "
+            "semantics.",
+            "Add a regression case for a blank line inside the documented template example.",
+        ),
+    )
+    stale, rule, snippet, progress, pending = options[variant]
+    anchors = (
+        _anchor("operating_rule", f"template-rule-{variant}", rule),
+        _anchor("pending_action", f"template-pending-{variant}", pending),
+    )
+    return _example(
+        family="template-native-output",
+        variant=variant,
+        messages=(
+            _message("user", stale),
+            _message("assistant", f"I drafted an example following that approach:\n{snippet}"),
+            _message("user", f"That approach is wrong. {rule}"),
+            _message("tool", progress, name="docs_validation", call=f"template-docs-{variant}"),
+            _message("assistant", progress),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            operating_rules=(rule,),
+            project_context=(f"Canonical Kedi example:\n{snippet}",),
+            recent_progress=(progress,),
+            completed_actions=(progress,),
+            resources=("docs/language/templates.md",),
+            pending_actions=(pending,),
+            lifecycle_outcomes=("The updated documentation example passed validation.",),
+        ),
+        anchors=anchors,
+        forbidden=(stale,),
+        signal="native-output-semantics",
+    )
+
+
+def _virtual_python_lsp(variant: int) -> HistoryExample:
+    options = (
+        (
+            "model",
+            "str",
+            "Inline Python hover mapping returned Unknown for model even though basedpyright "
+            "inferred str.",
+            "Virtual-document coordinates now map the inline expression back to Kedi and hover "
+            "reports str without recoloring the backtick delimiters.",
+            "Add multiline Virtual Python hover coverage for an imported function result.",
+            "[model: str] = `select_model()`",
+        ),
+        (
+            "solve_knapsack",
+            "Callable[[str, int], int]",
+            "The imported solve_knapsack symbol had no hover inside a multiline Python block.",
+            "Imported Python symbols are now projected into the virtual document and the hover "
+            "reports Callable[[str, int], int].",
+            "Verify rename and signature help for the imported symbol in a nested procedure.",
+            "```\nresult = solve_knapsack(items, capacity)\nreturn result\n```",
+        ),
+    )
+    symbol, inferred_type, failure, fix, pending, snippet = options[variant]
+    anchors = (
+        _anchor("resource", f"virtual-python-file-{variant}", "src/kedi/lsp/python_virtual.py"),
+        _anchor("pending_action", f"virtual-python-pending-{variant}", pending),
+    )
+    return _example(
+        family="virtual-python-lsp",
+        variant=variant,
+        messages=(
+            _message("user", f"This Kedi snippet has a bad hover:\n{snippet}"),
+            _message("assistant", failure),
+            _message(
+                "tool",
+                f"basedpyright symbol={symbol} inferred_type={inferred_type} diagnostics=0",
+                name="lsp_probe",
+                call=f"virtual-probe-{variant}",
+            ),
+            _message("assistant", fix),
+            _message(
+                "tool",
+                "tests/test_lsp_python_virtual.py: focused hover and semantic-token tests PASSED",
+                name="pytest",
+                call=f"virtual-tests-{variant}",
+            ),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            project_context=(
+                "Kedi LSP type information for embedded Python comes from a mapped virtual "
+                "Python document.",
+            ),
+            recent_progress=(fix,),
+            completed_actions=(fix,),
+            resources=(
+                "src/kedi/lsp/python_virtual.py",
+                "tests/test_lsp_python_virtual.py",
+            ),
+            pending_actions=(pending,),
+            lifecycle_outcomes=(
+                f"The focused Virtual Python tests passed and {symbol} resolves as "
+                f"{inferred_type}.",
+            ),
+        ),
+        anchors=anchors,
+        forbidden=(failure,),
+        signal="virtual-python-type-projection",
+    )
+
+
+def _module_package_import(variant: int) -> HistoryExample:
+    options = (
+        (
+            "Selective imports place only the listed exported names into the environment; Kedi "
+            "does not create Python-style aliases or namespace objects.",
+            "> import: services/profiles:\n  Profile\n  get_profile",
+            "The module fixture confirmed source-order writes: the last declaration or import of "
+            "a name wins.",
+            "Add a nested relative-import case where two modules export the same value name.",
+            ("services/profiles.kedi", "examples/module_imports/main.kedi"),
+        ),
+        (
+            "A package import resolves package/main.kedi, while slash notation selects a "
+            "submodule below the declared source tree.",
+            "> import: kedi_http/client:\n  request\n  Response",
+            "A temporary KEDI_HOME install placed the synthetic package under the Kedi registry "
+            "and both root and submodule imports passed.",
+            "Verify that a package cannot escape its declared source tree through a symlink.",
+            ("package.kedi", "$HOME/.kedi/registry/kedi_http"),
+        ),
+    )
+    rule, snippet, progress, pending, resources = options[variant]
+    anchors = (
+        _anchor("decision", f"import-rule-{variant}", rule),
+        _anchor("pending_action", f"import-pending-{variant}", pending),
+    )
+    return _example(
+        family="module-package-import",
+        variant=variant,
+        messages=(
+            _message("user", f"Use this Kedi import shape in the fixture:\n{snippet}"),
+            _message("assistant", "I initially modeled it as a Python module namespace."),
+            _message("user", f"Do not apply Python import assumptions. {rule}"),
+            _message("tool", progress, name="kedi_parse_and_run", call=f"import-run-{variant}"),
+            _message("assistant", progress),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            project_context=(rule,),
+            decisions=(rule,),
+            recent_progress=(progress,),
+            completed_actions=(progress,),
+            resources=resources,
+            pending_actions=(pending,),
+        ),
+        anchors=anchors,
+        forbidden=("Create a Python-style module alias.",),
+        signal="kedi-module-resolution",
+    )
+
+
+def _skills_registry_resolution(variant: int) -> HistoryExample:
+    options = (
+        (
+            "Use > skills:, not > use: skills. Resolve the Kedi registry first, then local "
+            ".agents/skills, then the user's global .agents/skills directory.",
+            "> skills:\n  enabled: true\n  include_registry: true\n  include_all: false",
+            "The resolver selected the registry copy of skill-creator and list_skills returned "
+            "stable IDs without reading SKILL.md eagerly.",
+            "Add exclude_paths coverage when the same skill exists in all three roots.",
+        ),
+        (
+            "Enabled skills are discovered explicitly; list_skills returns IDs and read_skill "
+            "loads one SKILL.md only when the agent chooses it.",
+            "> skills:\n  enabled: true\n  max_skills: 12\n"
+            '  exclude_paths: `["~/.agents/skills/legacy"]`',
+            "The Kedi skills fixture loaded one requested skill and left the remaining skill "
+            "contents outside model context.",
+            "Kedi registry ile local skill ayni ada sahipse precedence testini ekle.",
+        ),
+    )
+    rule, snippet, progress, pending = options[variant]
+    anchors = (
+        _anchor("operating_rule", f"skills-rule-{variant}", rule),
+        _anchor("pending_action", f"skills-pending-{variant}", pending),
+    )
+    return _example(
+        family="skills-registry-resolution",
+        variant=variant,
+        messages=(
+            _message("user", f"Configure the profile with this syntax:\n{snippet}"),
+            _message("assistant", "I was going to register skills through > use: skills."),
+            _message("user", rule),
+            _message("tool", progress, name="skill_smoke", call=f"skills-smoke-{variant}"),
+            _message("assistant", progress),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            operating_rules=(rule,),
+            project_context=("A Kedi skill is a one-file SKILL.md capability read explicitly.",),
+            recent_progress=(progress,),
+            completed_actions=(progress,),
+            resources=("$HOME/.kedi/registry/skills", "./.agents/skills"),
+            pending_actions=(pending,),
+        ),
+        anchors=anchors,
+        forbidden=("Register skills through > use: skills.",),
+        signal="skill-discovery-precedence",
+    )
+
+
+def _history_prefix_compaction(variant: int) -> HistoryExample:
+    options = (
+        (
+            "Preserve the existing message order and append new turns; do not reorder a cached "
+            "prefix merely because recent files were accessed in a different order.",
+            "The history processor retained the cached prefix byte-for-byte and removed only "
+            "eligible suffix noise.",
+            "Add a cache regression where B reads d, c, b, x after A cached a, b, c, d.",
+            "tests/test_history_processor.py",
+        ),
+        (
+            "Releasing an artifact removes it from the live store but must not delete or rewrite "
+            "earlier history messages that are part of a provider-cached prefix.",
+            "The release path now marks the reference unavailable while preserving append-only "
+            "conversation order.",
+            "Verify compaction turns the released reference into a compact lifecycle fact without "
+            "changing the cached prefix.",
+            "tests/test_native_compaction.py",
+        ),
+    )
+    rule, progress, pending, test_file = options[variant]
+    anchors = (
+        _anchor("operating_rule", f"history-rule-{variant}", rule),
+        _anchor("pending_action", f"history-pending-{variant}", pending),
+    )
+    return _example(
+        family="history-prefix-compaction",
+        variant=variant,
+        messages=(
+            _message("user", rule),
+            _message("assistant", "I considered rebuilding history in most-recently-used order."),
+            _message("user", "That would destroy the provider cache prefix. Keep append order."),
+            _message("tool", progress, name="history_probe", call=f"history-probe-{variant}"),
+            _message("assistant", progress),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            operating_rules=(rule,),
+            project_context=(
+                "Kedi history compaction must preserve unchanged provider-cached prefixes.",
+            ),
+            recent_progress=(progress,),
+            completed_actions=(progress,),
+            resources=(test_file,),
+            pending_actions=(pending,),
+        ),
+        anchors=anchors,
+        forbidden=("Rebuild history in most-recently-used order.",),
+        signal="cache-stable-history",
+    )
+
+
+def _telemetry_adapter_parity(variant: int) -> HistoryExample:
+    options = (
+        (
+            "Use service.name=kedi. Instrumentation scope names may be kedi.<scope>, while visible "
+            "span names remain human-readable actions such as agent reviewer and call read_file.",
+            "The fake Pydantic and LangChain runs emitted one agent span and one tool span each "
+            "without duplicate Pydantic AI spans.",
+            "Run the same parity probe for the Codex adapter and compare semantic attributes.",
+        ),
+        (
+            "Kedi telemetry is a no-op until a backend is installed; adapter shims add agent and "
+            "tool spans only where the underlying framework does not already provide them.",
+            "The no-backend runtime produced no exports, and the installed test backend captured "
+            "subagent, workflow, approval, and artifact lifecycle spans.",
+            "Add cancellation status assertions for a dynamic workflow span.",
+        ),
+    )
+    rule, outcome, pending = options[variant]
+    anchors = (
+        _anchor("operating_rule", f"telemetry-rule-{variant}", rule),
+        _anchor("pending_action", f"telemetry-pending-{variant}", pending),
+    )
+    return _example(
+        family="telemetry-adapter-parity",
+        variant=variant,
+        messages=(
+            _message("user", rule),
+            _message("assistant", "I added generic kedi.agent.invoke and kedi.tool.execute spans."),
+            _message(
+                "user",
+                "Those names are not the agreed DX. Keep semantic actions run_agent/call_tool, "
+                "but make visible names readable.",
+            ),
+            _message("tool", outcome, name="otel_test_backend", call=f"otel-probe-{variant}"),
+            _message("assistant", outcome),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            operating_rules=(rule,),
+            recent_progress=(outcome,),
+            completed_actions=(outcome,),
+            resources=("kedi-otel", "src/kedi/telemetry"),
+            pending_actions=(pending,),
+            lifecycle_outcomes=("The focused telemetry parity probe passed.",),
+        ),
+        anchors=anchors,
+        forbidden=("kedi.agent.invoke", "kedi.tool.execute"),
+        signal="otel-adapter-parity",
+    )
+
+
+def _interactive_session_state(variant: int) -> HistoryExample:
+    options = (
+        (
+            "InteractiveSession.execute_fragment executes only the new fragment and preserves "
+            "the existing Kedi environment without rerunning earlier side effects.",
+            "Two fragments shared x=4; the side-effect counter remained one and :show x "
+            "returned 4.",
+            "Add a fragment that imports a selective Kedi module after an earlier assignment.",
+        ),
+        (
+            "The terminal REPL uses +++ as its configurable begin marker, ... for continuation, "
+            "and :show <expr> for explicit expression display.",
+            "A multiline procedure accepted continuation input and Ctrl-C exited without printing "
+            "a Python KeyboardInterrupt traceback.",
+            "REPL importundan sonra onceki fragmentin tekrar calismadigini test et.",
+        ),
+    )
+    rule, outcome, pending = options[variant]
+    anchors = (
+        _anchor("project_fact", f"interactive-rule-{variant}", rule),
+        _anchor("pending_action", f"interactive-pending-{variant}", pending),
+    )
+    return _example(
+        family="interactive-session-state",
+        variant=variant,
+        messages=(
+            _message("user", rule),
+            _message("assistant", "I first implemented each fragment by calling run_main again."),
+            _message(
+                "user", "Do not change run_main; incremental execution is a separate surface."
+            ),
+            _message("tool", outcome, name="interactive_smoke", call=f"idle-smoke-{variant}"),
+            _message("assistant", outcome),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            project_context=(rule,),
+            constraints=("Do not change run_main; incremental execution is a separate surface.",),
+            recent_progress=(outcome,),
+            completed_actions=(outcome,),
+            resources=("src/kedi/interactive_session.py", "src/kedi/idle.py"),
+            pending_actions=(pending,),
+        ),
+        anchors=anchors,
+        forbidden=("Implement each fragment by calling run_main again.",),
+        signal="incremental-execution-state",
+    )
+
+
+def _adapter_profile_parity(variant: int) -> HistoryExample:
+    options = (
+        (
+            "Native PydanticAdapter run, iter, and run_stream calls must apply the active Kedi "
+            "profile's system prompt, model settings, effort, MCP servers, scoped tools, and "
+            "required-tool policy.",
+            "The parity matrix passed for run and iter, including external approval deferral with "
+            "canonical Kedi arguments.",
+            "Add early-close cancellation coverage for run_stream.",
+        ),
+        (
+            "LazyAdapter must resolve and forward child execution, approval, history, "
+            "stream-event, and model-conversion capabilities instead of hiding the concrete "
+            "adapter surface.",
+            "A Pydantic-backed LazyAdapter delegated to planner and returned task_summary plus "
+            "final_result without the previous unsupported-delegation error.",
+            "Verify the same capability forwarding after a profile override changes adapters.",
+        ),
+    )
+    rule, outcome, pending = options[variant]
+    stale = "The active adapter does not support Kedi subagent delegation."
+    anchors = (
+        _anchor("operating_rule", f"adapter-rule-{variant}", rule),
+        _anchor("pending_action", f"adapter-pending-{variant}", pending),
+    )
+    return _example(
+        family="adapter-profile-parity",
+        variant=variant,
+        messages=(
+            _message("user", rule),
+            _message("tool", stale, name="delegate_task", call=f"adapter-fail-{variant}"),
+            _message("assistant", "The wrapper exposed only the base invoke method."),
+            _message("assistant", outcome),
+            _message("tool", "focused adapter parity tests PASSED", name="pytest"),
+            _message("user", pending),
+        ),
+        expected=SummaryCheckpoint(
+            current_objective=pending,
+            operating_rules=(rule,),
+            recent_progress=(outcome,),
+            completed_actions=(outcome,),
+            resources=("src/kedi/agent_adapter", "tests/test_pydantic_native_parity.py"),
+            pending_actions=(pending,),
+            lifecycle_outcomes=("The focused adapter parity tests passed after the fix.",),
+        ),
+        anchors=anchors,
+        forbidden=(stale,),
+        signal="adapter-capability-forwarding",
+    )
+
+
 _SCENARIOS = (
     _Scenario("latest-wins", "train", _latest_wins),
     _Scenario("resolved-failure", "train", _resolved_failure),
@@ -772,23 +1237,20 @@ _SCENARIOS = (
     _Scenario("approval-lifecycle", "train", _approval_lifecycle),
     _Scenario("artifact-lifecycle", "train", _artifact_lifecycle),
     _Scenario("subagent-retry", "train", _subagent_retry),
+    _Scenario("template-native-output", "train", _template_native_output),
+    _Scenario("virtual-python-lsp", "train", _virtual_python_lsp),
+    _Scenario("skills-registry-resolution", "train", _skills_registry_resolution),
+    _Scenario("history-prefix-compaction", "train", _history_prefix_compaction),
     _Scenario("scoped-exception", "validation", _scoped_exception),
     _Scenario("interrupted-stream", "validation", _interrupted_stream),
     _Scenario("stale-plan-resource", "validation", _stale_plan_resource),
+    _Scenario("module-package-import", "validation", _module_package_import),
+    _Scenario("interactive-session-state", "validation", _interactive_session_state),
     _Scenario("secret-artifact", "heldout", _secret_artifact),
     _Scenario("workflow-cancellation", "heldout", _workflow_cancellation),
     _Scenario("false-completion", "heldout", _false_completion),
-)
-
-_NOISE_TOPICS = (
-    "parser benchmark notes",
-    "editor fixture inventory",
-    "telemetry attribute survey",
-    "documentation wording draft",
-    "provider capability matrix",
-    "package metadata exploration",
-    "temporary test-output review",
-    "discarded naming alternatives",
+    _Scenario("telemetry-adapter-parity", "heldout", _telemetry_adapter_parity),
+    _Scenario("adapter-profile-parity", "heldout", _adapter_profile_parity),
 )
 
 
@@ -798,42 +1260,128 @@ def _expand_history(
     example_id: str,
     seed: int,
     target_chars: int,
+    prior_work: tuple[_BuiltScenario, ...],
 ) -> tuple[HistoryMessage, ...]:
     rng = random.Random(_stable_seed(seed, example_id))
-    prefix = list(core[:-2])
-    closing = list(core[-2:])
+    target = target_chars + rng.randrange(max(1, target_chars // 5))
+    work_items = list(prior_work)
+    rng.shuffle(work_items)
+    if not work_items:
+        raise ValueError("Synthetic history expansion requires split-local prior work.")
+
+    history = [core[0]]
+    next_core = 1
     sequence = 0
-    while sum(len(message.content) for message in (*prefix, *closing)) < target_chars:
-        topic = rng.choice(_NOISE_TOPICS)
+    while sum(len(message.content) for message in history) < target:
+        if next_core < len(core) - 1 and (sequence == 0 or rng.random() < 0.34):
+            history.append(core[next_core])
+            next_core += 1
+        prior = work_items[sequence % len(work_items)]
         token = hashlib.sha256(f"{example_id}:{seed}:{sequence}".encode()).hexdigest()[:12]
-        status = rng.choice(("archived", "superseded", "closed", "exploratory"))
-        report = "\n".join(
-            f"entry-{index:02d} {topic} ref={token}-{index:02d} status={status} "
-            f"measurement={rng.randrange(100, 999)}"
-            for index in range(12)
-        )
-        prefix.extend(
-            (
-                _message(
-                    "user",
-                    f"Background batch {sequence}: inspect {topic}. This batch is {status} and "
-                    "does not change active requirements.",
-                ),
-                _message(
-                    "tool",
-                    report,
-                    name="read_background_batch",
-                    call=f"noise-{token}",
-                ),
-                _message(
-                    "assistant",
-                    f"Recorded background batch {sequence} as {status}; it created no pending "
-                    "work and no durable project decision.",
-                ),
+        history.extend(
+            _resolved_prior_work(
+                prior,
+                token=token,
+                sequence=sequence,
+                rng=rng,
             )
         )
         sequence += 1
-    return tuple((*prefix, *closing))
+
+    history.extend(core[next_core:-1])
+    history.append(core[-1])
+    tail_mode = _stable_seed(seed + 1, example_id) % 3
+    if tail_mode == 1:
+        history.append(
+            _message(
+                "commentary",
+                "I am opening the referenced Kedi source and focused tests for this request now.",
+            )
+        )
+    elif tail_mode == 2:
+        history.append(_message("assistant", "I will continue with that exact scope."))
+    return tuple(history)
+
+
+def _resolved_prior_work(
+    prior: _BuiltScenario,
+    *,
+    token: str,
+    sequence: int,
+    rng: random.Random,
+) -> tuple[HistoryMessage, ...]:
+    work_item = f"KEDI-SYN-{token.upper()}"
+    copied: list[HistoryMessage] = [
+        _message(
+            "commentary",
+            f"Earlier work item {work_item} concerned {prior.family.replace('-', ' ')}.",
+        )
+    ]
+    sensitive_values = prior.example.input.evaluation.sensitive_values
+    for message in prior.example.input.messages:
+        content = message.content
+        for value in sensitive_values:
+            content = content.replace(value, "<REDACTED_SYNTHETIC_CANARY>")
+        copied.append(
+            _message(
+                message.role,
+                content,
+                name=message.name,
+                call=(
+                    f"{message.tool_call_id}-{token}" if message.tool_call_id is not None else None
+                ),
+            )
+        )
+
+    states = ("completed", "superseded", "rejected")
+    state = states[sequence % len(states)]
+    report = _prior_work_report(
+        family=prior.family,
+        work_item=work_item,
+        state=state,
+        rng=rng,
+    )
+    copied.append(
+        _message(
+            "tool",
+            report,
+            name="prior_work_resolution",
+            call=f"prior-resolution-{token}",
+        )
+    )
+    closure = {
+        "completed": (
+            f"{work_item} belonged to an earlier milestone. Its focused checks passed and no "
+            "follow-up from that work item remains active."
+        ),
+        "superseded": (
+            f"{work_item} was replaced before the current task. Do not carry its requested "
+            "changes or constraints forward."
+        ),
+        "rejected": (
+            f"{work_item} was not accepted and made no source change. Do not resume its proposal."
+        ),
+    }[state]
+    copied.append(_message("user", closure))
+    return tuple(copied)
+
+
+def _prior_work_report(
+    *,
+    family: str,
+    work_item: str,
+    state: str,
+    rng: random.Random,
+) -> str:
+    test_module = family.replace("-", "_")
+    rows = [f"work_item={work_item} family={family} terminal_state={state}"]
+    rows.extend(
+        f"tests/test_{test_module}.py::test_case_{index:02d} "
+        f"PASSED duration_ms={rng.randrange(8, 900)} "
+        f"trace={rng.randrange(100000, 999999)}"
+        for index in range(32)
+    )
+    return "\n".join(rows)
 
 
 def _stable_seed(seed: int, example_id: str) -> int:

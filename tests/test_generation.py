@@ -19,23 +19,31 @@ from kedi_summarization_optimizer.generation import (
 
 TARGET_HISTORY_CHARS = 4_000
 PROJECT_ROOT = Path(__file__).parents[1]
-SYNTHETIC_V1_FINGERPRINTS = {
-    "train": "baea88d0903de585fd24a2b5316afcdb0cf426c9dc58342712510b29dd8e3a8b",
-    "validation": "691fdef26936bcf3a81d4df97d6062e85a0452491ec33dbc1f4f0bab329ba6ba",
-    "heldout": "acd3e03328c4ec78251bc39ec1075ecc520541e1ea3736e2ded59a09c3d3c40d",
+SYNTHETIC_V2_FINGERPRINTS = {
+    "train": "de6819ace3060d68efd51559bbd27ac0afcf5a4542be0e14861ce8d4adf648e1",
+    "validation": "82365d27d3a0d0e4050f6ed5db88c8a0fa2ece6def8ae68ae0507d4a469f8071",
+    "heldout": "50ea7e9ac19fffa1e3fda107cde86d860e2f5a0f693b57fe70ff1a053df32d12",
 }
 REQUIRED_FAMILIES = {
+    "adapter-profile-parity",
     "approval-lifecycle",
     "artifact-lifecycle",
     "false-completion",
+    "history-prefix-compaction",
+    "interactive-session-state",
     "interrupted-stream",
     "latest-wins",
+    "module-package-import",
     "parallel-tools",
     "resolved-failure",
     "scoped-exception",
     "secret-artifact",
+    "skills-registry-resolution",
     "stale-plan-resource",
     "subagent-retry",
+    "telemetry-adapter-parity",
+    "template-native-output",
+    "virtual-python-lsp",
     "workflow-cancellation",
 }
 
@@ -54,7 +62,7 @@ def test_generation_is_deterministic_isolated_and_high_context() -> None:
 
     assert first == second
     assert first.fingerprints() == second.fingerprints()
-    assert (len(first.train), len(first.validation), len(first.heldout)) == (12, 6, 6)
+    assert (len(first.train), len(first.validation), len(first.heldout)) == (20, 10, 10)
 
     split_families = [
         {example.metadata.scenario_family for example in split}
@@ -77,6 +85,74 @@ def test_generation_is_deterministic_isolated_and_high_context() -> None:
         )
         assert evaluation.hard_pass, (example.id, evaluation.feedback)
         assert evaluation.score == 1.0
+
+
+def test_histories_are_kedi_specific_naturalistic_and_not_legacy_filler() -> None:
+    dataset = generate_synthetic_dataset(_config())
+    examples = (*dataset.train, *dataset.validation, *dataset.heldout)
+    kedi_markers = (
+        ">>",
+        "> skills:",
+        "> import:",
+        "Kedi",
+        "LSP",
+        "artifact",
+        "tool_call_result_",
+        "approval",
+        "subagent",
+        "workflow",
+        "prefix",
+        "run_main",
+    )
+
+    for example in examples:
+        source = "\n".join(message.content for message in example.input.messages)
+        roles = {message.role for message in example.input.messages}
+        assert len(example.input.messages) >= 12
+        assert {"user", "assistant", "tool"} <= roles
+        assert any(marker in source for marker in kedi_markers)
+        assert "Background batch" not in source
+        assert "does not change active requirements" not in source
+        assert example.metadata.labels["actual_history_chars"] == str(
+            sum(len(message.content) for message in example.input.messages)
+        )
+
+
+def test_split_local_prior_work_does_not_leak_across_dataset_boundaries() -> None:
+    dataset = generate_synthetic_dataset(_config())
+    split_messages = [
+        {
+            json.dumps(message.model_dump(mode="json"), sort_keys=True)
+            for example in split
+            for message in example.input.messages
+        }
+        for split in (dataset.train, dataset.validation, dataset.heldout)
+    ]
+    shared = (
+        split_messages[0] & split_messages[1]
+        | split_messages[0] & split_messages[2]
+        | split_messages[1] & split_messages[2]
+    )
+    allowed_tails = {
+        json.dumps(
+            {
+                "content": content,
+                "name": None,
+                "role": role,
+                "tool_call_id": None,
+            },
+            sort_keys=True,
+        )
+        for role, content in (
+            (
+                "commentary",
+                "I am opening the referenced Kedi source and focused tests for this request now.",
+            ),
+            ("assistant", "I will continue with that exact scope."),
+        )
+    }
+
+    assert shared == allowed_tails
 
 
 def test_seed_changes_only_generated_history_and_fingerprints() -> None:
@@ -177,12 +253,20 @@ def test_cli_generates_dataset_and_publication_summary(
     assert summary["output"] == str(destination.resolve())
     assert summary["seed"] == 19
     assert summary["fingerprints"] == dataset.fingerprints()
-    assert summary["splits"]["heldout"]["examples"] == 6
+    assert summary["splits"]["heldout"]["examples"] == 10
     assert synthetic_dataset_summary(dataset)["generator_version"] == GENERATOR_VERSION
 
 
-def test_checked_in_synthetic_v1_matches_the_default_generator() -> None:
-    checked_in = load_dataset(PROJECT_ROOT / "datasets" / "synthetic_v1.json")
+def test_checked_in_synthetic_v2_matches_the_default_generator() -> None:
+    checked_in = load_dataset(PROJECT_ROOT / "datasets" / "synthetic_v2.json")
 
     assert checked_in == generate_synthetic_dataset()
-    assert checked_in.fingerprints() == SYNTHETIC_V1_FINGERPRINTS
+    assert checked_in.fingerprints() == SYNTHETIC_V2_FINGERPRINTS
+    assert {
+        example.input.messages[-1].role
+        for example in (
+            *checked_in.train,
+            *checked_in.validation,
+            *checked_in.heldout,
+        )
+    } == {"user", "assistant", "commentary"}
