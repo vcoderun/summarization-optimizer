@@ -152,9 +152,12 @@ _IMPERATIVE_RULE_PREFIXES = (
     "carry ",
     "classify ",
     "compress ",
+    "derive ",
     "distinguish ",
     "do ",
+    "ensure ",
     "exclude ",
+    "forward ",
     "if ",
     "include ",
     "keep ",
@@ -172,11 +175,17 @@ _IMPERATIVE_RULE_PREFIXES = (
     "remove ",
     "resolve ",
     "retain ",
+    "select ",
+    "separate ",
+    "state ",
+    "summarize ",
     "treat ",
     "use ",
+    "update ",
     "verify ",
     "when ",
 )
+_IMPERATIVE_RULE_MODIFIERS = ("always ", "carefully ", "consistently ", "explicitly ", "only ")
 
 
 class PromptProposal(FrozenModel):
@@ -205,7 +214,12 @@ class PromptProposal(FrozenModel):
                 )
             if "\n" in normalized or _MULTIPLE_SENTENCES.search(normalized):
                 raise ValueError("Each proposal rule must be one sentence.")
-            if not folded.startswith(_IMPERATIVE_RULE_PREFIXES):
+            command = folded
+            for modifier in _IMPERATIVE_RULE_MODIFIERS:
+                if command.startswith(modifier):
+                    command = command.removeprefix(modifier)
+                    break
+            if not command.startswith(_IMPERATIVE_RULE_PREFIXES):
                 raise ValueError("Each proposal rule must be imperative or conditional.")
 
         if not 300 <= len(self.instructions) <= MAX_PROPOSAL_CHARS:

@@ -76,6 +76,9 @@ def test_prompt_proposal_rejects_optimizer_only_and_oversized_text() -> None:
 
     expected = "\n".join(f"- {rule}" for rule in valid)
     assert codex_runtime.PromptProposal(rules=valid).instructions == expected
+    assert codex_runtime.PromptProposal(
+        rules=(*valid[:-1], "Always preserve verified lifecycle outcomes.")
+    )
     with pytest.raises(ValidationError, match="optimizer-only"):
         codex_runtime.PromptProposal(rules=(*valid[:-1], "Use evaluation constraints."))
     with pytest.raises(ValidationError, match="optimizer-only"):
@@ -88,6 +91,8 @@ def test_prompt_proposal_rejects_optimizer_only_and_oversized_text() -> None:
         )
     with pytest.raises(ValidationError, match="imperative"):
         codex_runtime.PromptProposal(rules=(*valid[:-1], "Active work should remain available."))
+    with pytest.raises(ValidationError, match="imperative"):
+        codex_runtime.PromptProposal(rules=(*valid[:-1], "Always active work remains available."))
     with pytest.raises(ValidationError, match="between 300"):
         codex_runtime.PromptProposal(rules=tuple("Preserve " + "x" * 900 for _ in range(5)))
 
